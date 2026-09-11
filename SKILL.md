@@ -23,7 +23,7 @@ Constants (tweak here):
   each invocation keeps its own records.
 - `LOG = RUN_DIR/decisions.md`
 - `FINDING_BAR` = `finding-bar.md` beside this file (absolute path
-  `~/.claude/skills/review-loop/finding-bar.md`). The three categories a
+  `~/.claude/skills/review-loop/finding-bar.md`). The categories a
   finding must meet, shared verbatim by reviewer and implementer so the two
   cannot drift apart.
 
@@ -208,7 +208,7 @@ session sees, and your turn ending is final — nothing re-invokes you.
 
 1. Read the spec at <spec path>. The diff is meant to implement it.
 2. Read the finding bar at <FINDING_BAR>. Every finding you raise must meet
-   one of its three categories and say which.
+   one of its categories and say which.
 3. From the decision log at <LOG>, read **only** the header, `## Context`,
    `## Implementation decisions`, and every `- ruling` line. Do not read
    the earlier rounds' findings or triage yet — you form your own view of
@@ -249,24 +249,26 @@ session sees, and your turn ending is final — nothing re-invokes you.
    wrong; such findings go to the user, so make the case fully. A re-raise
    without that argument is noise; do not include it.
 7. Your final message must list every finding as plain text, most severe
-   first. The parent session cannot see the ReportFindings tool output, so
-   the code-review skill's instruction not to repeat findings as text does
-   not apply here — repeat them. For each finding give: file:line, a
-   one-sentence summary, its trigger / what it makes easier to maintain and
-   how / why the documentation is false, whether it was CONFIRMED or only PLAUSIBLE (this records whether the code does what you
-   say, not how much it matters), whether it reverses a logged decision,
-   and whether it needs a human decision. Also include a "Considered but not raised" section.
-   The first line of your message must be exactly `VERDICT: NOT APPROVED`
-   or `VERDICT: APPROVED` — nothing before it.
+   first. The parent session cannot see the ReportFindings tool output, so the
+   code-review skill's instruction not to repeat findings as text does not apply
+   here — repeat them. For each finding give: file:line, a one-sentence summary,
+   its trigger / what it makes easier to maintain and how / why the
+   documentation is false, whether it was CONFIRMED or only PLAUSIBLE (this
+   records whether the code does what you say, not how much it matters), whether
+   it reverses a logged decision, and whether it needs a human decision. Also
+   include a "Considered but not raised" section.  The first line of your
+   message must be exactly `VERDICT: NOT APPROVED` or `VERDICT: APPROVED` —
+   nothing before it.
    - NOT APPROVED — at least one [Blocking] finding: a behavior defect or
-     robustness issue with a trigger, a diff-vs-spec gap, or a
-     simplification that meets the finding bar (removes present
-     duplication, dead code, etc). Documentation and naming issues should be reported but generally do
-     not block approval; you can trust that any documentation findings you
-     report will be addressed prior to merging. You may also block approval
-     for a really important issue outside these categories, sparingly — if
-     you do, label that finding [Blocking] and say why it blocks. Label every
-     finding [Blocking] or [Non-blocking].
+     robustness issue with a trigger, a diff-vs-spec gap, or a nontrivial
+     simplification (one that introduces, merges, or restructures
+     code). One-site edits such as deleting dead code do not block approval
+     because you can trust that the implementer will address it without
+     re-review. Similarly, documentation and naming issues should be reported
+     but generally do not block approval. You may also block approval for a
+     really important issue outside these categories, sparingly — if you do,
+     label that finding [Blocking] and say why it blocks. Label every finding
+     [Blocking] or [Non-blocking].
    - APPROVED — every finding is [Non-blocking]: naming, wording,
      documentation fixes, etc. Non-blocking findings don't need a category.
 
@@ -297,13 +299,13 @@ append the decisions below the pasted message **before** changing any code:
 Rules:
 
 - **The acceptance test.** Accept a finding only if all of these hold:
-  1. It meets one of the three categories in `FINDING_BAR` and says which.
-  2. You verified it by that category's method (the file's last section):
-     reproduced the trigger, wrote the simplification out and compared, or
-     checked the quoted doc against the code.
-  3. Its justification is not a future edit someone might make — that fails
+  1. For the three main categories, you verified it by that category's method
+     (the file's last section): reproduced the trigger, wrote the simplification
+     out and compared, or checked the quoted doc against the code. If the
+     finding does not belong to these categories, use your best judgment.
+  2. Its justification is not a future edit someone might make — that fails
      however plausible the reason attached; reject it, saying so.
-  4. You agree it is an improvement. The reviewer has fresh eyes, not
+  3. You agree it is an improvement. The reviewer has fresh eyes, not
      authority: form your own opinion. Every suggestion arrives with a
      reason, and accepting on "has a reason" is how a small change
      accumulates guards against hypotheticals nobody asked for.

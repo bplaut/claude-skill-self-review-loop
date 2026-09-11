@@ -1,7 +1,7 @@
 # The finding bar
 
 Shared by the reviewer (what to raise) and the implementer (what to accept).
-Every finding must do one of three things, and say which.
+In general, a finding should do one of the following things, and say which.
 
 ## 1. Name its trigger
 
@@ -44,6 +44,12 @@ to hold in mind, less indirection between a call and what it does.
 ## 3. Quote documentation or a comment that is objectively false about the code
 
 Explain why it is objectively false, rather than just ambiguous.
+
+## 4. Something else (rare)
+
+If the reviewer feels strongly that there is an issue with the code outside of
+the three categories above, it should report it. It should clearly justify why the
+issue is major and why it does not fit a category.
 
 ## Not findings
 

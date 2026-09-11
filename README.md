@@ -68,15 +68,11 @@ new session by running the same `/review-loop <spec>` command.
 
 `finding-bar.md` is the contract both sides work to. I've set the finding bar
 up based on my personal priorities / needs. In my setup, a finding must do one
-of three things: name a concrete trigger that reaches a failure, make the
+of these things: name a concrete trigger that reaches a failure, make the
 code simpler in a way the reviewer can name, or quote documentation that is
 objectively false. I explicitly state that guarding against hypothetical future edits
 is not a finding, because I found that this is a path to scope creep. The implementer
 accepts a finding only after verifying it by the method the file gives for its category.
-
-I treat code simplification that meets the bar as Blocking, not optional: duplicated
-or dead code in the diff stops approval the same way a defect does. This is because
-I've found that agents tend to still write lots of duplicated code.
 
 ## Things you may want to change
 
@@ -84,9 +80,10 @@ I've found that agents tend to still write lots of duplicated code.
   the standards stricter or looser, add or remove categories, or restructure
   it completely. This is the one place to change it; both the reviewer
   and the implementer read it.
-- **What blocks approval** (`SKILL.md`, the verdict definitions in the
-  reviewer prompt). In particular, making simplifications Non-blocking would
-  shorten loops at the cost of leaving extra duplication.
+- **What blocks approval** (`SKILL.md`, the verdict definitions in the reviewer
+  prompt). In particular, making most or all simplifications Non-blocking would
+  shorten loops at the cost of leaving extra duplication. (Trivial
+  simplifications are already Non-blocking.)
 - **When the implementer must ask you** (`SKILL.md`, "Escalation"). As
   written, every reversal of a logged decision and every rejection of a
   Blocking finding comes to you. Loosening either gives the implementer
