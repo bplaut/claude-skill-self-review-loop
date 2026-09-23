@@ -1,7 +1,7 @@
 ---
 name: review-loop
 description: Implement a spec file, then loop with a fresh independent reviewer subagent (running /code-review) until the change is clean, triaging and logging every finding and escalating scope decisions to the user. Use only when the user runs /review-loop <path-to-spec-file>.
-argument-hint: <path-to-spec-file> [--rounds N]
+argument-hint: <path-to-spec-file> [--rounds N] [--auto]
 ---
 
 # review-loop
@@ -12,11 +12,16 @@ The reviewer is always a freshly spawned subagent so it never sees your
 reasoning — only the spec, the diff, and the decision log.
 
 Arguments: `$ARGUMENTS` — the spec file path, optionally followed by
-`--rounds N`.
+`--rounds N` and/or `--auto`.
 
 Constants (tweak here):
 
 - `ROUND_CAP` = `N` if `--rounds N` was given, else `4`
+- `AUTO` = true if `--auto` was given, else false. In auto mode the loop
+  never pauses for a ruling mid-run: every escalation is logged with a
+  provisional decision and the loop keeps going, then presents all open
+  questions in one batch when it would otherwise exit or hits the cap. See
+  "Auto mode" under Escalation.
 - `REVIEW_LEVEL = high`
 - `RUN_DIR` = the directory containing the spec file. Everything this run
   produces — the decision log, the PR draft, anything else — goes here, so
@@ -43,7 +48,8 @@ procedural detail.
    every reject carries a reason.
 4. **Scope is the user's.** Neither you nor the reviewer expands or cuts the spec.
    When a decision is theirs, stop and ask; ending your turn is what pauses the
-   loop, and the log on disk is its state.
+   loop, and the log on disk is its state. Research decisions — anything that
+   changes what a result number means — are the most important of these.
 
 ## Phase 0 — setup (fail fast)
 
@@ -52,7 +58,10 @@ exactly which one and why; do not try to fix the repo state yourself.
 
 1. The first token of `$ARGUMENTS` is a path to an existing, non-empty
    file. Read it in full. If `--rounds` is present, `N` must be a positive
-   integer; anything else in `$ARGUMENTS` is an error.
+   integer; `--auto` takes no value; anything else in `$ARGUMENTS` is an
+   error. Every check in this phase applies in auto mode too: a failed
+   check or an insufficient spec stops the run, since guessing there would
+   poison everything after.
 2. **Is this a resume?** If `LOG` already exists, tell the user and ask whether
    to resume from it or start over; never silently overwrite it. On start
    over, rename the old log to `decisions-<YYYYMMDD-HHMM>.md` in `RUN_DIR`
@@ -109,7 +118,8 @@ Then, on a fresh run:
   record "no suite": "run the tests" then means the hand checks the spec
   names, and nothing in this skill asks you to create a suite.
 - Create `LOG` with a header recording the spec path, the branch, `BASE`,
-  the start time, the test status at `BASE`, and the untracked paths present
+  the start time, the mode (`auto` or `interactive`), the test status at
+  `BASE`, and the untracked paths present
   now (`git status --porcelain | grep '^??'`, so your own new files can be
   told from pre-existing ones later). Then a `## Context` section listing
   every decision from your conversation with the user that the spec does not
@@ -125,35 +135,48 @@ incomplete step:
 - no round heading → Phase 1 unfinished; compare `git diff <BASE>` to the spec
 - heading but no pasted reviewer message → spawn round N's reviewer
 - message but no decisions → triage
-- an `[escalate]` entry with no matching `- ruling` line → the loop paused
-  on a question; take the user's answers from the current conversation, or ask
-  again, record them, then continue that round
+- an `[escalate]` entry with no matching `- ruling` line → in interactive
+  mode the loop paused on a question; take the user's answers from the
+  current conversation, or ask again, record them, then continue that
+  round. In auto mode an open escalation with a `provisional:` line is not
+  a pause; continue with the round's next incomplete step
 - decisions but no `applied, committed` → apply and commit
 - `applied, committed` but no `outcome:` line → decide Phase 4 and write it
 - `outcome: repeat` → start round N+1; `outcome: exit` → the exit steps
+- `outcome: pause` (auto mode) → the batch is awaiting rulings. If the
+  rulings are in the current conversation, record and apply them and
+  continue per "Auto mode"; otherwise present the batch again
 
 The log is **append-only** and has a fixed shape. Nothing parses it; a
 fresh session reads it to find its place, and a predictable shape makes
-that fast. Never insert into the middle of the file.
+that fast. Never insert into the middle of the file. One exception: when a
+later round's accepted fix or a ruling supersedes an entry under
+`## Implementation decisions` (or an earlier `- decision:` line), append
+` — superseded, see round N` to the end of that entry. The original text
+stays; the suffix stops the next reviewer, who reads the header before the
+rounds, from re-reporting a decision the code no longer follows.
 
 ~~~
 # review-loop decision log
 - spec: <path>   - branch: <name>   - BASE: <sha>   - started: <time>
+- mode: auto | interactive
 - tests at BASE: <pass/fail summary, or "no suite">
 - untracked at start: <paths>
 ## Context
 ## Implementation decisions        <- Phase 1 only; complete before round 1
+- <decision> — <reason> [— superseded, see round N]   <- the suffix is the one edit allowed later
 ## Round N
 review started <time>
 ```<reviewer's final message, verbatim>```
 - [accept|reject|escalate|defer] <file:line> — <summary>
   reason: <one sentence>
+  provisional: <what you did meanwhile> <- auto mode, [escalate] entries only
 - decision: <what and why>          <- a design choice made while fixing
 - ruling <file:line>: <the user's answer> <- appended when they answer; never edit the entry above
-reviewer deviation: <what>          <- or "none"
+- for the user: <research observation or question the reviewer raised> <- information, not a decision; collected at exit
 tests: <summary>                    <- no new failures vs the header, or "no suite"
 applied, committed <time>
-outcome: repeat | exit — <reason>   <- written before the round ends
+outcome: repeat | exit | pause — <reason>   <- written before the round ends; pause is auto mode only
 ## Result                           <- exit; collects every [defer] line
 ~~~
 
@@ -177,7 +200,9 @@ applying fixes, goes under its round as a `- decision:` line.
 If you hit an escalation trigger (see below), escalate before continuing on
 that point; finish everything independent of it first — unless the question
 is load-bearing for what follows, in which case ask early rather than build
-on an assumption the user may reverse.
+on an assumption the user may reverse. In auto mode you cannot ask early:
+log the escalation with a `provisional:` line naming the reading you built,
+and prefer the reading that is cheapest to undo.
 
 ## Phase 2 — review
 
@@ -207,15 +232,18 @@ You are a subagent: your final message is the only thing the parent
 session sees, and your turn ending is final — nothing re-invokes you.
 
 1. Read the spec at <spec path>. The diff is meant to implement it.
-2. Read the finding bar at <FINDING_BAR>. Every finding you raise must meet
-   one of its categories and say which.
+2. Read the finding bar at <FINDING_BAR>. Every [Blocking] finding you
+   raise must meet one of its categories and say which; [Non-blocking]
+   findings need no category.
 3. From the decision log at <LOG>, read **only** the header, `## Context`,
    `## Implementation decisions`, and every `- ruling` line. Do not read
    the earlier rounds' findings or triage yet — you form your own view of
    the diff first, and read theirs afterwards (step 6). Context and
    implementation decisions tell you what the implementer chose and why;
    a finding that would change an implementation decision is an ordinary
-   finding — name the decision it touches and go on. Rulings are the user's
+   finding — name the decision it touches and go on. An entry ending
+   "superseded, see round N" is history, not the current design; do not
+   report the code for disagreeing with it. Rulings are the user's
    (the human) and are final unless you can say why the ruling's reason is
    wrong.
 4. Run the /code-review skill at level <REVIEW_LEVEL> (invoke the Skill
@@ -247,7 +275,10 @@ session sees, and your turn ending is final — nothing re-invokes you.
    rejection, an acceptance, or a ruling — keep the finding, mark it
    "reverses round N decision on X", and say why the logged reason is
    wrong; such findings go to the user, so make the case fully. A re-raise
-   without that argument is noise; do not include it.
+   without that argument is noise; do not include it. An `[escalate]`
+   entry with no `- ruling` line is pending the user, not the implementer:
+   do not re-argue it, and mention it only if you have new evidence the
+   entry does not already state.
 7. Your final message must list every finding as plain text, most severe
    first. The parent session cannot see the ReportFindings tool output, so the
    code-review skill's instruction not to repeat findings as text does not apply
@@ -256,9 +287,14 @@ session sees, and your turn ending is final — nothing re-invokes you.
    documentation is false, whether it was CONFIRMED or only PLAUSIBLE (this
    records whether the code does what you say, not how much it matters), whether
    it reverses a logged decision, and whether it needs a human decision. Also
-   include a "Considered but not raised" section.  The first line of your
-   message must be exactly `VERDICT: NOT APPROVED` or `VERDICT: APPROVED` —
-   nothing before it.
+   include a "Considered but not raised" section, and a "For the user"
+   section for anything you noticed about the research itself rather than
+   the code: a confound, a definition that changes what a reported number
+   means, a pattern in the data, a question the spec does not answer. These
+   are not findings against the diff and need no category; state each with
+   its evidence. Leave the section out only if it is empty. The first line
+   of your message must be exactly `VERDICT: NOT APPROVED` or
+   `VERDICT: APPROVED` — nothing before it.
    - NOT APPROVED — at least one [Blocking] finding: a behavior defect or
      robustness issue with a trigger, a diff-vs-spec gap, or a nontrivial
      simplification (one that introduces, merges, or restructures
@@ -333,13 +369,14 @@ Rules:
   convincing. Agreeing with the reviewer is not a way around this.
 - A PLAUSIBLE finding gets checked (read the code, run it) before it is
   accepted or rejected. Never dismiss it unverified.
-- **Log reviewer deviations.** If the reviewer broke any of its instructions
-  as far as you can tell from its message and the repo state — edited a
-  file, reviewed commits before `BASE`, omitted the verdict format, re-raised
-  a logged decision without saying why, suggested something outside the
-  spec's scope — add `reviewer deviation: <what>` under the round heading.
-  This is how the skill gets tuned; it is not a reason to discount the
-  finding itself.
+- **Research observations always reach the user.** Everything in the
+  reviewer's "For the user" section, and any finding you reject or defer
+  because it is about the research rather than the code (a confound, a
+  metric's meaning, a data pattern), goes under the round heading as a
+  `- for the user: <observation, with its evidence>` line. Never drop one
+  as out of scope: out of scope means it is not the diff's to fix, not that
+  the user should not hear it. These lines are collected at exit and in
+  every auto-mode batch.
 
 Then apply every accepted finding, run the tests, commit them, and append
 `tests: <summary, no new failures vs BASE>` and `applied, committed <time>`
@@ -358,6 +395,15 @@ Escalate (stop and ask, do not guess) when:
 - the spec is ambiguous and the readings lead to materially different code
   (routine judgement calls you make yourself, as a careful colleague would);
 - a finding would reverse any logged decision (yours or the user's);
+- **the decision would change what a result number means or which
+  records it is computed over** — a metric's definition or denominator, a
+  judge's template, labels or notes, which sentinel or unjudged records
+  are excluded, a sampling parameter, which models or cells are charted.
+  These are research decisions and the most important escalations of all:
+  an engineering call that goes wrong is caught by the next review, but a
+  research call that goes wrong silently moves the numbers the project
+  exists to produce. Escalate them even when the spec seems to settle the
+  point and you are confident in your reading;
 - you would reject a Blocking finding;
 - tests fail and the fix needs a scope change;
 - the round cap is reached but the loop would otherwise continue (the last
@@ -368,7 +414,7 @@ Escalate (stop and ask, do not guess) when:
 Also use common sense. If you think a situation arises that should be escalated,
 do so even if it diverges from the flow described by the skill.
 
-Mechanics:
+Mechanics (interactive mode; auto mode changes steps 1–4, see below):
 
 1. Finish all work that does not depend on the answer first and commit it,
    so the tree is clean while you wait. Do not restructure history here; it
@@ -390,27 +436,77 @@ and only after the rulings are applied decide whether the loop continues.
 Never list an open escalation in the exit report as something for the user to
 look at later — that is a question, not a note.
 
+### Auto mode (`--auto`)
+
+The triggers above are unchanged: the same decisions are still the user's,
+and every one still becomes an `[escalate]` entry with your recommendation.
+What changes is that you do not stop for them:
+
+- **Decide provisionally and keep going.** Under each `[escalate]` entry add
+  `provisional: <what you did meanwhile>`. Act on your own recommendation:
+  for a Blocking finding you would reject, that means leaving the code as
+  it is; for a spec ambiguity, building the reading you recommend. When
+  options are close, choose the one that is cheapest to undo, and say so.
+  For a research decision (the trigger above), the provisional is always
+  the spec's current text, whatever you would recommend: past runs show
+  the implementer's recommendation is reversed most often on exactly
+  these, and building a research preference into the code makes later
+  rounds review numbers the user has not agreed to. List these first in
+  the batch.
+- **Never act against a ruling.** A finding that would reverse a ruling the
+  user already made is logged as an escalation and the code stays as ruled.
+- **Rounds finish despite open escalations.** The "round is not finished"
+  rule above is suspended: write the round's `outcome:` line and, if the
+  loop continues, start the next round. Where Phase 4 says to ask the user
+  whether to run another round, run one, within the cap.
+- **The stopping point is a pause, not an exit.** When the loop would exit
+  (Phase 4's exit conditions) or the cap is reached with the loop wanting to
+  continue, check for open escalations. If there are none, exit as usual.
+  If there are any, append `outcome: pause — <n> open escalations` to the
+  round, do **not** run the exit steps (no restructure, no filing the spec,
+  no PR draft), and present every open question in one message: context,
+  options, your recommendation, and what was done provisionally. Add the
+  cap question if the cap applies, and every `- for the user:` line logged
+  since the last batch, in their own section after the questions. Then end
+  your turn.
+- **After the rulings**, append each `- ruling` line as usual. If any ruling
+  makes significant code changes (see Phase 4's test below) or the cap ruling
+  asks for more rounds, apply the rulings, commit, and continue in auto
+  mode. New escalations batch toward the next stopping point. If no ruling makes
+  significant code changes and no more rounds were asked for, apply and commit
+  any ruling that changes code, then run the exit steps; the report says that
+  that code went unreviewed.
+
+The cost of auto mode is that later rounds review code built on a
+provisional decision, so a reversed one can undo several rounds of work.
+That is why provisional choices prefer the cheapest-to-undo option and the
+batch says what each provisional action was.
+
 ## Phase 4 — terminate or repeat
 
 After triage, exit the loop if
 - the reviewer returned APPROVED **and** you did not make any significant code changes
 afterwards, or
-- all [Blocking] findings were escalated to the user, whose rulings resulted in no code changes, or
+- all [Blocking] findings were escalated to the user, whose rulings resulted in
+  no significant code changes, or
 - `ROUND_CAP` rounds have run and the user, asked per the escalation trigger, said to exit.
 
-If an accepted fix after an APPROVED round restructures code — adds a
-helper, changes a function's behavior, or touches several sites — treat
-the round as NOT APPROVED and run one more, within the cap. If the only code changes
-are obviously correct, exit the loop. If you're unsure, ask the user whether to run another round.
+If an accepted fix after an APPROVED round requires significant code changes —
+for example, adds a helper or changes a function's behavior — treat the round as
+NOT APPROVED and run one more, within the cap. If the only code changes are
+obviously correct, exit the loop. If you're unsure, ask the user whether to run
+another round (in auto mode, run one instead).
 
-A Blocking finding that the user rejects is settled — there is nothing for a reviewer to contest —
-so if every Blocking finding ended that way, exit as if APPROVED. A ruling
-that *does* change code is new code the loop introduced, and it gets
-reviewed like any other accepted fix.
+A Blocking finding that the user rejects is settled — there is nothing for a
+reviewer to contest — so if every Blocking finding ended that way, exit as if
+APPROVED. A ruling that *does* make significant code changes needs to be
+reviewed like any other accepted fix and triggers another round (if under the
+cap).
 
 Before leaving the round, append `outcome: repeat — <reason>` or
 `outcome: exit — <reason>` to `LOG`, so a resumed session can read the
-decision instead of re-deriving it.
+decision instead of re-deriving it. In auto mode, an exit with open
+escalations is `outcome: pause` instead (see "Auto mode").
 
 Whenever fixes land after the last review (accepted findings from the last
 round, or the user's rulings), those changes are unreviewed, and the report must
@@ -444,14 +540,18 @@ On exit:
    the design intent behind them. `LOG` stays in `RUN_DIR`, untracked.
 3. Append `## Result` to `LOG`: rounds run, findings
    accepted/rejected/escalated/deferred per round, every `[defer]` line
-   collected into one list, and why the loop stopped.
+   collected into one list, every `- for the user:` line collected into
+   another, and why the loop stopped.
 4. If the project's git workflow calls for a PR, draft it as that workflow
    says (title and body to a file in `RUN_DIR`, hand the user the push-and-create
    command).
 5. Report to the user: what was built, the round count, the log path, any
-   rulings they made, every `[defer]` line collected into one list, whether
-   the last round's fixes went unreviewed, and
+   rulings they made, every `[defer]` line collected into one list, every
+   `- for the user:` line collected into another (the research observations
+   the reviewers made along the way, which otherwise survive only in the
+   log), whether the last round's fixes went unreviewed, and
    `git log -p --reverse <BASE>..HEAD` to review the commits.
 
 The user can interrupt at any time; a later `/review-loop <same spec>` resumes
-from `LOG` (Phase 0).
+from `LOG` (Phase 0). The mode comes from the log header on resume, not
+from the new invocation's flags.

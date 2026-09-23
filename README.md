@@ -39,7 +39,8 @@ diff size.
    modify the skill to allow thinner specs, but I've found detailed specs to
    perform the best.
 2. Run `/review-loop path/to/spec.md`, optionally `--rounds N` to change the
-   round cap from its default of 4.
+   round cap from its default of 4, and/or `--auto` to run without pausing
+   for your decisions (see step 6).
 3. Phase 0 checks the tree is clean and the spec is sufficient. If the spec
    has gaps, the session asks you before writing code and puts your answers
    into the spec file.
@@ -50,10 +51,18 @@ diff size.
    anchored by them. Its message starts with `VERDICT: APPROVED` or
    `VERDICT: NOT APPROVED` and labels every finding `[Blocking]` or
    `[Non-blocking]`.
-6. Phase 3 triages: each finding is accepted, rejected, escalated, or
-   deferred, with a one-line reason, before any code changes. Escalations
-   pause the loop and wait for your answer; your rulings are appended to
-   the log and are final.
+6. Phase 3 triages: each finding is accepted, rejected, escalated, or deferred,
+   with a one-line reason, before any code changes. Escalations pause the loop
+   and wait for your answer; your rulings are appended to the log and are
+   final. With `--auto`, escalations do not pause the loop: each is logged with
+   a provisional decision (usually the implementer's own recommendation,
+   preferring whatever is cheapest to undo; for a research decision, always the
+   spec's current text) and the loop continues, then presents every open
+   question in one batch when it would otherwise exit or hits the cap. Anything
+   a reviewer notices about the research itself (a confound, a data pattern,
+   what a number means) is logged as a note for you and included in every batch
+   and in the exit report. A ruling that restructures code triggers further
+   review rounds, so auto mode does not mean one pass.
 7. Phase 4 decides: another round if the verdict was NOT APPROVED or the
    accepted fixes restructured code, otherwise exit. At the cap it asks you
    whether to stop or continue. On exit it restructures the commits into one
@@ -67,10 +76,11 @@ new session by running the same `/review-loop <spec>` command.
 ## What counts as a finding
 
 `finding-bar.md` is the contract both sides work to. I've set the finding bar
-up based on my personal priorities / needs. In my setup, a finding must do one
-of these things: name a concrete trigger that reaches a failure, make the
+up based on my personal priorities / needs. In my setup, a Blocking finding must
+do one of these things: name a concrete trigger that reaches a failure, make the
 code simpler in a way the reviewer can name, or quote documentation that is
-objectively false. I explicitly state that guarding against hypothetical future edits
+objectively false. Non-blocking findings (naming, wording, and the like) need no
+category. I explicitly state that guarding against hypothetical future edits
 is not a finding, because I found that this is a path to scope creep. The implementer
 accepts a finding only after verifying it by the method the file gives for its category.
 
@@ -85,9 +95,13 @@ accepts a finding only after verifying it by the method the file gives for its c
   shorten loops at the cost of leaving extra duplication. (Trivial
   simplifications are already Non-blocking.)
 - **When the implementer must ask you** (`SKILL.md`, "Escalation"). As
-  written, every reversal of a logged decision and every rejection of a
-  Blocking finding comes to you. Loosening either gives the implementer
-  more autonomy and you fewer interruptions.
+  written, every reversal of a logged decision, every rejection of a
+  Blocking finding, and every decision that would change what a result
+  number means comes to you. Loosening either gives the implementer
+  more autonomy and you fewer interruptions. `--auto` is the per-run
+  version of this trade: the same questions reach you, but batched at the
+  end, at the cost of later rounds possibly reviewing code built on a
+  provisional call you then reverse.
 - **The round cap** (`--rounds N`, default 4). Hitting it asks you rather
   than exiting, so it bounds cost without ending a productive loop.
 - **The review depth** (`REVIEW_LEVEL` in `SKILL.md`, default `high`).

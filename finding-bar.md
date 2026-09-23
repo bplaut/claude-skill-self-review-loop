@@ -1,7 +1,8 @@
 # The finding bar
 
 Shared by the reviewer (what to raise) and the implementer (what to accept).
-In general, a finding should do one of the following things, and say which.
+A Blocking finding must do one of the following things, and say which.
+Non-blocking findings need no category (see section 4).
 
 ## 1. Name its trigger
 
@@ -47,9 +48,15 @@ Explain why it is objectively false, rather than just ambiguous.
 
 ## 4. Something else (rare)
 
-If the reviewer feels strongly that there is an issue with the code outside of
-the three categories above, it should report it. It should clearly justify why the
-issue is major and why it does not fit a category.
+If the reviewer feels strongly that there is a major issue with the code
+outside the three categories above, it should report it as [Blocking],
+clearly justifying why the issue is major and why it fits no category. This
+is the only route to a Blocking finding outside categories 1–3.
+
+Non-blocking findings — naming, wording, a stale comment, a small
+observation — need no category: report them with the [Non-blocking] label
+and the reason. The implementer may reject them without escalation, so the
+category's job of making a finding checkable is not needed there.
 
 ## Not findings
 
