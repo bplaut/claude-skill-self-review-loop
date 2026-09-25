@@ -185,6 +185,13 @@ outcome: repeat | exit | pause — <reason>   <- written before the round ends; 
 Build the change as you normally would, following every rule in the
 project's `CLAUDE.md`, and run its tests.
 
+**The spec and the log stay out of the code.** Docstrings, comments, tests,
+repo docs and commit messages never cite the spec or `LOG` by their own
+labels — "Decision 3's variance", "per finding 2", "the round 1 fix" — here
+or when applying fixes in later rounds. A reader of the code has neither
+file, so the reference explains nothing. When a decision shapes the code,
+write its substance (the formula, the rule, the reason) where the code is.
+
 **Commit as you go.** Commit whenever a coherent piece lands so progress is
 tracked. The history is restructured once, at exit, so intermediate commits
 need only an honest message.
