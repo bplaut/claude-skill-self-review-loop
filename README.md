@@ -22,12 +22,19 @@ diff size.
    because that's where Claude Code will look for the skill.
 2. The reviewer runs the built-in `/code-review` skill, so that must be
    available in your Claude Code install.
-3. In each repo you use it in, the spec's directory must be gitignored
-   (the skill checks). A convention that works: `.review-loop/<change>/`
-   with `.review-loop/` in `.gitignore`.
-4. On exit the skill moves the spec to `completed_specs/` at the repo root
-   and commits it, so the design record lands with the code. Create nothing
-   in advance; the directory is made on first use.
+3. Keep each spec in a directory of its own, which also holds the run's
+   decision log and PR draft. A convention that works: outside the repo,
+   at `~/review-loop/<repo>/<change>/`. Claude Code blocks a worktree
+   session's file edits in the main checkout, so a run directory there
+   blocks worktree runs; outside the repo, every session reaches the same
+   single copy, and it outlives the worktree. Add the directory to
+   `permissions.additionalDirectories` in `~/.claude/settings.json` so
+   sessions treat it like the project directory. A run directory inside the
+   repo also works if it is gitignored (the skill checks).
+4. On exit the skill moves the spec to `completed_specs/` at the top of the
+   checkout the session runs in and commits it, so the design record lands
+   with the code. Create nothing in advance; the directory is made on first
+   use.
 
 ## How a run goes
 

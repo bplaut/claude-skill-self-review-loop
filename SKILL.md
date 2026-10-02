@@ -67,8 +67,11 @@ exactly which one and why; do not try to fix the repo state yourself.
    over, rename the old log to `decisions-<YYYYMMDD-HHMM>.md` in `RUN_DIR`
    so the earlier run's record survives, then continue as a fresh run. On
    resume, see "Resuming" below; the remaining checks change meaning.
-3. No git operation is in progress: none of `.git/rebase-merge`,
-   `.git/rebase-apply`, `.git/MERGE_HEAD`, `.git/CHERRY_PICK_HEAD` exist.
+3. No git operation is in progress: for each of `rebase-merge`,
+   `rebase-apply`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`,
+   `test -e "$(git rev-parse --git-path <name>)"` fails. Ask git for the
+   path: in a linked worktree `.git` is a file, so a literal
+   `.git/<name>` never exists.
 4. Tree state. **Fresh run:** no tracked file is modified or staged —
    `git status --porcelain` shows only `??` lines. Untracked files never
    enter `git diff <BASE>`; an uncommitted edit would. A dirty tree is
@@ -76,11 +79,16 @@ exactly which one and why; do not try to fix the repo state yourself.
    **Resume:** a dirty tree is expected — it is this run's interrupted
    work. Show the user `git status` and `git diff --stat`, and ask whether to
    keep or discard it; do not stop.
-5. `RUN_DIR` is a subdirectory of the repo, not the repo root (a spec at
-   the top level would put the log in the root and make the next check
-   meaningless), and it is gitignored (`git check-ignore -q RUN_DIR`), so
-   nothing the run writes there can enter the reviewed diff. If not, stop
-   and hand the user the one-line `.gitignore` edit.
+5. Nothing the run writes to `RUN_DIR` can enter the reviewed diff. That
+   needs checking only when `RUN_DIR` is inside the current checkout:
+   `git -C RUN_DIR rev-parse --show-toplevel` prints the same path as
+   `git rev-parse --show-toplevel` (run both without changing directory).
+   Then `RUN_DIR` must not be the top level — `git -C RUN_DIR rev-parse
+   --show-prefix` is non-empty (a spec there would put the log in the root
+   and make the next check meaningless) — and must be gitignored —
+   `git -C RUN_DIR check-ignore -q .` succeeds; if not, hand the user the
+   one-line `.gitignore` edit. Anywhere else (outside git, another
+   repository, another checkout) needs no check.
 6. **The spec is sufficient** (fresh run only; on resume it was checked
    before). Scope disputes are settled by pointing at the spec, so it must
    carry enough to point at. Check that it states:
@@ -535,8 +543,10 @@ On exit:
    rebuild the commits explicitly (soft-reset to `BASE`, restore each
    commit's files, commit) — a scripted resolver has silently dropped
    content before.
-2. **File the spec.** Move the spec file to `completed_specs/` at the repo
-   root (create the directory if needed; stop if a file of that name is
+2. **File the spec.** Move the spec file to `completed_specs/` at the top
+   level of the current checkout (`git rev-parse --show-toplevel`), where
+   the branch is, even when `RUN_DIR` is outside it (create the
+   directory if needed; stop if a file of that name is
    already there) and commit it on its own, after the code commits. The
    subject names the change; the body lists the subjects of the commits the
    spec covers, one per line, from `git log --format=%s --reverse
