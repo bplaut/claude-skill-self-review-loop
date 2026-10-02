@@ -113,9 +113,11 @@ exactly which one and why; do not try to fix the repo state yourself.
 
 Then, on a fresh run:
 
-- **Be on a feature branch.** If on `main`, create one with a reasonable
-  name for the change that does not already exist. If already on a branch
-  other than `main`, use it.
+- **Make a new branch** from the current `HEAD`: `git switch -c <name>`,
+  with a name for the change that does not already exist, in the style of
+  the repo's existing branches. Always a new one, whatever was checked out,
+  so the run's commits sit on a branch of their own; if you started on a
+  branch other than the default, the new one stacks on it.
 - Record the base commit: `BASE=$(git rev-parse HEAD)`. Every review and
   the exit restructure are relative to this commit; commits before it are
   never touched.
@@ -125,7 +127,8 @@ Then, on a fresh run:
   reviewer needs to know which failures it inherited. If there is no suite,
   record "no suite": "run the tests" then means the hand checks the spec
   names, and nothing in this skill asks you to create a suite.
-- Create `LOG` with a header recording the spec path, the branch, `BASE`,
+- Create `LOG` with a header recording the spec path, the branch and the
+  one it was made from (`detached` if none), `BASE`,
   the start time, the mode (`auto` or `interactive`), the test status at
   `BASE`, and the untracked paths present
   now (`git status --porcelain | grep '^??'`, so your own new files can be
@@ -166,7 +169,7 @@ rounds, from re-reporting a decision the code no longer follows.
 
 ~~~
 # review-loop decision log
-- spec: <path>   - branch: <name>   - BASE: <sha>   - started: <time>
+- spec: <path>   - branch: <name> (from <branch>)   - BASE: <sha>   - started: <time>
 - mode: auto | interactive
 - tests at BASE: <pass/fail summary, or "no suite">
 - untracked at start: <paths>
@@ -566,7 +569,12 @@ On exit:
    rulings they made, every `[defer]` line collected into one list, every
    `- for the user:` line collected into another (the research observations
    the reviewers made along the way, which otherwise survive only in the
-   log), whether the last round's fixes went unreviewed, and
+   log), whether the last round's fixes went unreviewed, whether the work
+   is stacked (if `git log --oneline origin/HEAD..<BASE>` is non-empty,
+   name the branch it was made from: a PR against the default branch
+   would carry those commits too; compare against the remote's default
+   branch, which a PR targets and local `main` can lag, and against the
+   local default branch only when there is no remote), and
    `git log -p --reverse <BASE>..HEAD` to review the commits.
 
 The user can interrupt at any time; a later `/review-loop <same spec>` resumes

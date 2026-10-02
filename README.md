@@ -50,7 +50,8 @@ diff size.
    for your decisions (see step 6).
 3. Phase 0 checks the tree is clean and the spec is sufficient. If the spec
    has gaps, the session asks you before writing code and puts your answers
-   into the spec file.
+   into the spec file. It then makes a new branch from wherever you are, so
+   start from the commit the change should build on.
 4. Phase 1 implements, committing as it goes.
 5. Phase 2 spawns a reviewer with only the spec, the diff since the base
    commit, the shared finding bar, and the log's context and rulings. It
