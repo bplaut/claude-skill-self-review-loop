@@ -68,7 +68,8 @@ exactly which one and why; do not try to fix the repo state yourself.
    so the earlier run's record survives, then continue as a fresh run. On
    resume, see "Resuming" below; the remaining checks change meaning.
 3. No git operation is in progress: for each of `rebase-merge`,
-   `rebase-apply`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`,
+   `rebase-apply`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`,
+   `sequencer` (a multi-commit cherry-pick or revert between commits),
    `test -e "$(git rev-parse --git-path <name>)"` fails. Ask git for the
    path: in a linked worktree `.git` is a file, so a literal
    `.git/<name>` never exists.
