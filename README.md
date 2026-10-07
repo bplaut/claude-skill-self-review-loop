@@ -2,8 +2,9 @@
 
 This repo implements /review-loop, a Claude Code skill that implements a spec
 and then iterates with an independent reviewer until the change is clean. One
-Claude session writes the code; a fresh subagent reviews it each round with no
-access to the implementer's reasoning. After each review, the implementer
+Claude session writes the code; a fresh reviewer (a Claude subagent, Codex, or
+one of each) reviews it each round with no access to the implementer's
+reasoning. After each review, the implementer
 decides whether each finding should be accepted or rejected, logs each decision
 with a reason, and stops to ask you whenever a decision is yours (scope, spec
 gaps, major disagreements with the reviewer). The implementer and reviewer
@@ -20,8 +21,13 @@ on high effort, depending on diff size.
    Claude Code picks up `SKILL.md` from there; `finding-bar.md` is read by
    path at runtime. It's important to clone into that precise directory,
    because that's where Claude Code will look for the skill.
-2. The reviewer runs the built-in `/code-review` skill, so that must be
-   available in your Claude Code install.
+2. The Claude reviewer runs the built-in `/code-review` skill, so that must be
+   available in your Claude Code install. A Codex reviewer needs the
+   [Codex CLI](https://github.com/openai/codex) installed and logged in; it
+   runs as `codex exec --sandbox read-only`, so allow that command in your
+   permissions and, if you use Claude Code's sandbox, add
+   `codex exec --sandbox read-only *` to `sandbox.excludedCommands`, since
+   Codex fails inside that sandbox.
 3. Keep each spec in a directory of its own, which also holds the run's
    decision log and PR draft. A convention that works: outside the repo,
    at `~/review-loop/<repo>/<change>/`. Claude Code blocks a worktree
@@ -45,15 +51,19 @@ on high effort, depending on diff size.
    has a test suite, the spec should say which tests the change adds. You could
    modify the skill to allow thinner specs, but I've found detailed specs to
    perform the best.
-2. Run `/review-loop path/to/spec.md`, optionally `--rounds N` to change the
-   round cap from its default of 4, and/or `--auto` to run without pausing
-   for your decisions (see step 6).
+2. Run `/review-loop path/to/spec.md`, optionally with `--rounds N` to change
+   the round cap from its default of 4, `--auto` to run without pausing for
+   your decisions (see step 6), and `--reviewer claude|codex|both` to choose
+   who reviews (default `claude`). `both` runs two reviewers per round, and a
+   round is approved only when both approve. A Codex review sends the spec,
+   the log, the diff and whatever else Codex chooses to read to OpenAI, and
+   its depth is whatever your Codex config sets (model, reasoning effort).
 3. Phase 0 checks the tree is clean and the spec is sufficient. If the spec
    has gaps, the session asks you before writing code and puts your answers
    into the spec file. It then makes a new branch from wherever you are, so
    start from the commit the change should build on.
 4. Phase 1 implements, committing as it goes.
-5. Phase 2 spawns a reviewer with only the spec, the diff since the base
+5. Phase 2 runs the reviewer with only the spec, the diff since the base
    commit, the shared finding bar, and the log's context and rulings. It
    forms its findings before reading earlier rounds' triage, so it is not
    anchored by them. Its message starts with `VERDICT: APPROVED` or
@@ -115,7 +125,8 @@ accepts a finding only after verifying it by the method the file gives for its c
 - **The round cap** (`--rounds N`, default 4). Hitting it asks you rather
   than exiting, so it bounds cost without ending a productive loop.
 - **The review depth** (`REVIEW_LEVEL` in `SKILL.md`, default `high`).
-  Lower levels are cheaper and shallower.
+  Lower levels are cheaper and shallower. A Codex reviewer's depth is set
+  in your Codex config instead.
 - **Where the spec is filed** (`completed_specs/` in the exit steps). Your
   repo may have a different convention, or you might not want it committed
   at all.

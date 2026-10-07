@@ -1,18 +1,19 @@
 ---
 name: review-loop
-description: Implement a spec file, then loop with a fresh independent reviewer subagent (running /code-review) until the change is clean, triaging and logging every finding and escalating scope decisions to the user. Use only when the user runs /review-loop <path-to-spec-file>.
-argument-hint: <path-to-spec-file> [--rounds N] [--auto]
+description: Implement a spec file, then loop with fresh independent reviewers (a Claude subagent running /code-review, Codex, or both) until the change is clean, triaging and logging every finding and escalating scope decisions to the user. Use only when the user runs /review-loop <path-to-spec-file>.
+argument-hint: <path-to-spec-file> [--rounds N] [--auto] [--reviewer claude|codex|both]
 ---
 
 # review-loop
 
 You are the **implementer**. You build the change described in the spec file,
 then repeat rounds of independent review and triage until the change is clean.
-The reviewer is always a freshly spawned subagent so it never sees your
-reasoning — only the spec, the diff, and the decision log.
+The reviewer is always fresh, a newly spawned subagent or a new Codex
+process, so it never sees your reasoning — only the spec, the diff, and the
+decision log.
 
-Arguments: `$ARGUMENTS` — the spec file path, optionally followed by
-`--rounds N` and/or `--auto`.
+Arguments: `$ARGUMENTS` — the spec file path, optionally followed by any of
+`--rounds N`, `--auto` and `--reviewer claude|codex|both`.
 
 Constants (tweak here):
 
@@ -22,7 +23,11 @@ Constants (tweak here):
   provisional decision and the loop keeps going, then presents all open
   questions in one batch when it would otherwise exit or hits the cap. See
   "Auto mode" under Escalation.
-- `REVIEW_LEVEL = high`
+- `REVIEWERS` = the `--reviewer` value, else `claude`: `claude` is a Claude
+  subagent each round, `codex` a Codex process, `both` one of each, run side
+  by side. See Phase 2.
+- `REVIEW_LEVEL = high` (Claude reviewer only; a Codex reviewer's depth is
+  the user's Codex configuration)
 - `RUN_DIR` = the directory containing the spec file. Everything this run
   produces — the decision log, the PR draft, anything else — goes here, so
   each invocation keeps its own records.
@@ -37,8 +42,9 @@ Constants (tweak here):
 Everything below serves these four. When in doubt, weigh them above the
 procedural detail.
 
-1. **The reviewer is independent.** A new subagent every round, given only
-   the spec, the diff, and the decision log — never your reasoning.
+1. **The reviewer is independent.** A new reviewer every round, subagent or
+   Codex process, given only the spec, the diff, and the decision log —
+   never your reasoning.
 2. **Two channels only.** Anything the reviewer might need lives in the spec
    or the decision log. Conversation with the user that the spec omits goes in
    the log.
@@ -58,8 +64,12 @@ exactly which one and why; do not try to fix the repo state yourself.
 
 1. The first token of `$ARGUMENTS` is a path to an existing, non-empty
    file. Read it in full. If `--rounds` is present, `N` must be a positive
-   integer; `--auto` takes no value; anything else in `$ARGUMENTS` is an
-   error. Every check in this phase applies in auto mode too: a failed
+   integer; `--auto` takes no value; `--reviewer` takes exactly one of
+   `claude`, `codex`, `both`; anything else in `$ARGUMENTS` is an error.
+   With a Codex reviewer, `codex login status` must exit 0 — it fails when
+   the CLI is missing or logged out — so that stops the run now rather than
+   after implementation. Every check in this
+   phase applies in auto mode too: a failed
    check or an insufficient spec stops the run, since guessing there would
    poison everything after.
 2. **Is this a resume?** If `LOG` already exists, tell the user and ask whether
@@ -130,13 +140,17 @@ Then, on a fresh run:
   names, and nothing in this skill asks you to create a suite.
 - Create `LOG` with a header recording the spec path, the branch and the
   one it was made from (`detached` if none), `BASE`,
-  the start time, the mode (`auto` or `interactive`), the test status at
+  the start time, the mode (`auto` or `interactive`), the reviewers
+  (`claude`, `codex` or `claude+codex`), the test status at
   `BASE`, and the untracked paths present
   now (`git status --porcelain | grep '^??'`, so your own new files can be
   told from pre-existing ones later). Then a `## Context` section listing
   every decision from your conversation with the user that the spec does not
   state — scope cuts, non-goals, deliberate simplifications, files that are
   out of bounds — or "none".
+- With a Codex reviewer, write its prompt file now (see "Codex reviewer").
+  Every placeholder in it is fixed from here on, so it is written once per
+  run and every round reuses it.
 
 **Resuming.** The spec and the log are your only state (a fresh session has
 no memory of the last one). `BASE` and the branch are the values in the log
@@ -145,8 +159,8 @@ tell the user. Find the last `## Round N` heading and re-enter at its first
 incomplete step:
 
 - no round heading → Phase 1 unfinished; compare `git diff <BASE>` to the spec
-- heading but no pasted reviewer message → spawn round N's reviewer
-- message but no decisions → triage
+- heading but no pasted reviews → run round N's reviewers, all of them
+- reviews pasted but no decisions → triage
 - an `[escalate]` entry with no matching `- ruling` line → in interactive
   mode the loop paused on a question; take the user's answers from the
   current conversation, or ask again, record them, then continue that
@@ -172,6 +186,7 @@ rounds, from re-reporting a decision the code no longer follows.
 # review-loop decision log
 - spec: <path>   - branch: <name> (from <branch>)   - BASE: <sha>   - started: <time>
 - mode: auto | interactive
+- reviewers: claude | codex | claude+codex
 - tests at BASE: <pass/fail summary, or "no suite">
 - untracked at start: <paths>
 ## Context
@@ -179,8 +194,9 @@ rounds, from re-reporting a decision the code no longer follows.
 - <decision> — <reason> [— superseded, see round N]   <- the suffix is the one edit allowed later
 ## Round N
 review started <time>
-```<reviewer's final message, verbatim>```
-- [accept|reject|escalate|defer] <file:line> — <summary>
+<reviewer>:                         <- claude or codex; one block per reviewer
+```<its final message, verbatim>```
+- [accept|reject|escalate|defer] <file:line> — <summary> (<reviewer(s)>)
   reason: <one sentence>
   provisional: <what you did meanwhile> <- auto mode, [escalate] entries only
 - decision: <what and why>          <- a design choice made while fixing
@@ -225,7 +241,7 @@ and prefer the reading that is cheapest to undo.
 
 ## Phase 2 — review
 
-Before spawning:
+Before running the reviewers:
 
 1. Commit everything: no tracked file modified or staged, and no untracked
    paths beyond those recorded in the log header — an uncommitted new file
@@ -234,10 +250,17 @@ Before spawning:
 2. Append `## Round N` to `LOG` with a line `review started <time>`, so an
    interrupted review leaves a trace to resume from.
 
-Spawn a reviewer with the `Agent` tool: `subagent_type: "general-purpose"`.
+A Claude reviewer is spawned with the `Agent` tool:
+`subagent_type: "general-purpose"`.
 **Never `fork`** — fork inherits your context, which defeats the purpose.
 **Never reuse a previous round's reviewer** via SendMessage — a new agent
 each round; the decision log carries forward what needs remembering.
+A Codex reviewer is run as in "Codex reviewer" below. With `both`, start
+the Codex reviewer first (it runs in the background), then spawn the Claude
+reviewer, then wait for Codex. Neither may see the other's message for the
+round, so nothing from the round enters the log until both have returned
+(Phase 3); each reads the other's earlier rounds there like any earlier
+round.
 
 The reviewer prompt must contain exactly this information and nothing about
 your own reasoning, plan, or self-review:
@@ -334,22 +357,73 @@ Read the verdict from the `VERDICT:` line; accept it anywhere in the first
 five lines, since a reviewer sometimes adds a preamble. If no such line
 exists — it only called ReportFindings, or it ended its turn "waiting" on
 agents it had spawned — stop and tell the user what came back. Do not spawn a
-fresh reviewer and do not proceed on an empty review.
+fresh reviewer and do not proceed on an empty review. With `both`, the
+round's verdict is APPROVED only if both reviewers returned APPROVED, and
+either one failing stops the run: never proceed on half a review.
+
+### Codex reviewer
+
+A Codex reviewer is a new `codex exec` process each round, given the prompt
+above. `codex review` would not do: it imposes its own output format, which
+has no `VERDICT:` line and no `[Blocking]` labels.
+
+1. The prompt file, `RUN_DIR/codex-reviewer-prompt.md`, is written once,
+   when `LOG` is created on a fresh run: the prompt above with its
+   placeholders filled in as for a subagent, and four changes that adapt
+   what was written for a Claude Code subagent:
+   - drop the clause about helper agents from the first paragraph;
+   - at the end of the step that reads the spec, add: "Also read the
+     repository's `CLAUDE.md`, if it has one, for its conventions." (a
+     subagent loads it on its own; Codex reads `AGENTS.md` instead);
+   - replace the step that runs /code-review with: "Review the diff since
+     <BASE>: `git diff <BASE>`, for behavior defects, robustness issues
+     with a trigger, and simplifications, per the finding bar. Do not review
+     commits before <BASE>. The commit structure since <BASE> is
+     work-in-progress and is restructured before merge; review the diff,
+     not the commits or their messages.";
+   - drop the sentence about the ReportFindings tool.
+
+   The prompt goes in a file because it contains backticks and
+   apostrophes, which the shell would interpret if it were passed inline.
+2. Run this one command with `run_in_background: true`, `RUN_DIR` as an
+   absolute path and `N` the round:
+
+       codex exec --sandbox read-only -o "<RUN_DIR>/codex-round-<N>.md" "Read <RUN_DIR>/codex-reviewer-prompt.md and follow its instructions exactly."
+
+   Nothing else on the line — no `cd`, pipe, redirect or `$(...)` — so a
+   permission rule for `codex exec --sandbox read-only` matches it; and no
+   `-c`, `--config`, `--enable` or `--disable`, so the user's Codex
+   configuration stays in force. `--sandbox read-only` keeps Codex from
+   writing, whatever that configuration says. Never `codex exec resume`: a
+   new process each round, for the same reason as a new subagent. Wait for
+   the completion notification without touching the working tree.
+3. The reviewer's final message is the contents of
+   `RUN_DIR/codex-round-<N>.md`; the command's own output is Codex's
+   transcript and is not pasted. If the command exits non-zero, or the file
+   is missing or empty, stop and tell the user, as for a missing verdict.
+   Never fall back to a Claude reviewer in its place.
 
 ## Phase 3 — triage
 
-First paste the reviewer's final message **verbatim** into `LOG` under the
-round's heading, in a fenced block. The user and later reviewers must be
-able to see what was actually said, not your paraphrase of it.
+Once every reviewer for the round has returned, paste each final message
+**verbatim** into `LOG` under the round's heading, in one append, each in a
+fenced block labelled with its reviewer (`claude:` or `codex:`). Not before:
+a reviewer still running reads `LOG`, and must not find the other's review
+of the same round there. The user and later reviewers must be able to see
+what was actually said, not your paraphrase of it.
 
-Then, for each finding — including the non-blocking items under an APPROVED
-verdict — decide **accept**, **reject**, **escalate**, or **defer**, and
-append the decisions below the pasted message **before** changing any code:
+Then, and only then, for each finding — including the non-blocking items
+under an APPROVED verdict — decide **accept**, **reject**, **escalate**, or
+**defer**, and append the decisions below the pasted messages **before**
+changing any code:
 
 ```
-- [accept|reject|escalate|defer] <file:line> — <finding summary>
+- [accept|reject|escalate|defer] <file:line> — <finding summary> (<reviewer(s)>)
   reason: <one sentence>
 ```
+
+The parenthesis names the reviewer that raised the finding. With `both`, a
+finding both raised gets one line naming both, so it is decided once.
 
 Rules:
 
@@ -504,7 +578,7 @@ batch says what each provisional action was.
 ## Phase 4 — terminate or repeat
 
 After triage, exit the loop if
-- the reviewer returned APPROVED **and** you did not make any significant code changes
+- the round's verdict was APPROVED **and** you did not make any significant code changes
 afterwards, or
 - all [Blocking] findings were escalated to the user, whose rulings resulted in
   no significant code changes, or
@@ -594,5 +668,6 @@ git refuses because the branch is checked out elsewhere, tell them rather
 than committing on a detached `HEAD`.
 
 The user can interrupt at any time; a later `/review-loop <same spec>` resumes
-from `LOG` (Phase 0). The mode comes from the log header on resume, not
-from the new invocation's flags.
+from `LOG` (Phase 0). The mode and the reviewers come from the log header
+on resume, not from the new invocation's flags; if the flags say otherwise,
+tell the user which the run is using.
