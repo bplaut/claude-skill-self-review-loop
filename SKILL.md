@@ -483,7 +483,7 @@ What changes is that you do not stop for them:
   continue, check for open escalations. If there are none, exit as usual.
   If there are any, append `outcome: pause — <n> open escalations` to the
   round, do **not** run the exit steps (no restructure, no filing the spec,
-  no PR draft), and present every open question in one message: context,
+  no PR draft, no freeing the branch), and present every open question in one message: context,
   options, your recommendation, and what was done provisionally. Add the
   cap question if the cap applies, and every `- for the user:` line logged
   since the last batch, in their own section after the questions. Then end
@@ -566,7 +566,16 @@ On exit:
 4. If the project's git workflow calls for a PR, draft it as that workflow
    says (title and body to a file in `RUN_DIR`, hand the user the push-and-create
    command).
-5. Report to the user: what was built, the round count, the log path, any
+5. **Free the branch** if this checkout is a linked worktree, which it is
+   when `git rev-parse --path-format=absolute --git-dir` and
+   `git rev-parse --path-format=absolute --git-common-dir` print different
+   paths: run `git switch --detach`. Git refuses to check out a branch that
+   another worktree has checked out, so until then the user cannot open the
+   branch in their own checkout. Detaching stays on the same commit, so no
+   file changes; switching to the default branch instead would fail
+   whenever the main checkout has it. In the main checkout, skip this step:
+   the branch is already the user's.
+6. Report to the user: what was built, the round count, the log path, any
    rulings they made, every `[defer]` line collected into one list, every
    `- for the user:` line collected into another (the research observations
    the reviewers made along the way, which otherwise survive only in the
@@ -575,8 +584,14 @@ On exit:
    name the branch it was made from: a PR against the default branch
    would carry those commits too; compare against the remote's default
    branch, which a PR targets and local `main` can lag, and against the
-   local default branch only when there is no remote), and
-   `git log -p --reverse <BASE>..HEAD` to review the commits.
+   local default branch only when there is no remote), whether the branch
+   was freed, and `git log -p --reverse <BASE>..<branch>` to review the
+   commits — the branch, not `HEAD`, since the user runs it from their own
+   checkout.
+
+If the user asks for changes after exit, `git switch <branch>` first. If
+git refuses because the branch is checked out elsewhere, tell them rather
+than committing on a detached `HEAD`.
 
 The user can interrupt at any time; a later `/review-loop <same spec>` resumes
 from `LOG` (Phase 0). The mode comes from the log header on resume, not

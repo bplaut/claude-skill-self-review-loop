@@ -75,7 +75,9 @@ on high effort, depending on diff size.
    accepted fixes restructured code, otherwise exit. At the cap it asks you
    whether to stop or continue. On exit it restructures the commits into one
    per logical change, files the spec, and hands you the review and
-   push commands. It never pushes.
+   push commands. It never pushes. In a linked worktree it then detaches
+   `HEAD`, since git won't let you check out a branch another worktree
+   holds.
 
 You can interrupt at any time and resume in the same session by continuing the
 conversation. The log on disk is the loop's state, so you can also resume in a
