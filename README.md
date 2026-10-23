@@ -10,7 +10,7 @@ with a reason, and stops to ask you whenever a decision is yours (scope, spec
 gaps, major disagreements with the reviewer). The implementer and reviewer
 iterate until they agree or the maximum number of rounds has been reached
 (default 4). I've found the cost per round to average around $50 for Fable 5.1
-on high effort, depending on diff size.
+on high effort or $10 for Opus 5.5 on xhigh effort, depending on diff size.
 
 ## Setup
 
