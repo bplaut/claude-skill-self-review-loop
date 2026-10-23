@@ -1,10 +1,10 @@
 ---
-name: review-loop
-description: Implement a spec file, then loop with fresh independent reviewers (a Claude subagent running /code-review, Codex, or both) until the change is clean, triaging and logging every finding and escalating scope decisions to the user. Use only when the user runs /review-loop <path-to-spec-file>.
+name: impl
+description: Implement a spec file, then loop with fresh independent reviewers (a Claude subagent running /code-review, Codex, or both) until the change is clean, triaging and logging every finding and escalating scope decisions to the user. Use only when the user runs /review-loop:impl <path-to-spec-file>.
 argument-hint: <path-to-spec-file> [--research-spec <path>] [--rounds N] [--auto] [--reviewer claude|codex|both]
 ---
 
-# review-loop
+# review-loop:impl
 
 You are the **implementer**. You build the change described in the spec file,
 then repeat rounds of independent review and triage until the change is clean.
@@ -46,8 +46,8 @@ Constants (tweak here):
   — the decision log, the PR draft, anything else — goes here, so each
   invocation keeps its own records.
 - `LOG = RUN_DIR/decisions.md`
-- `FINDING_BAR` = `finding-bar.md` beside this file (absolute path
-  `~/.claude/skills/review-loop/finding-bar.md`). The categories a
+- `FINDING_BAR` = `${CLAUDE_SKILL_DIR}/finding-bar.md`, beside this file;
+  give reviewers its expanded absolute path. The categories a
   finding must meet, shared verbatim by reviewer and implementer so the two
   cannot drift apart.
 
@@ -777,5 +777,5 @@ If the user asks for changes after exit, `git switch <branch>` first. If
 git refuses because the branch is checked out elsewhere, tell them rather
 than committing on a detached `HEAD`.
 
-The user can interrupt at any time; a later `/review-loop <same spec>` resumes
+The user can interrupt at any time; a later `/review-loop:impl <same spec>` resumes
 from `LOG` (see "Resuming").

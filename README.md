@@ -1,6 +1,6 @@
 # A Claude skill for iterated code review
 
-This repo implements /review-loop, a Claude Code skill that implements a spec
+This repo implements /review-loop:impl, a Claude Code skill that implements a spec
 and then iterates with an independent reviewer until the change is clean. One
 Claude session writes the code; a fresh reviewer (a Claude subagent, Codex, or
 one of each) reviews it each round with no access to the implementer's
@@ -18,9 +18,12 @@ on high effort or $10 for Opus 5.5 on xhigh effort, depending on diff size.
 
        git clone https://github.com/bplaut/claude-skill-self-review-loop ~/.claude/skills/review-loop
 
-   Claude Code picks up `SKILL.md` from there; `finding-bar.md` is read by
-   path at runtime. It's important to clone into that precise directory,
-   because that's where Claude Code will look for the skill.
+   The repo is a plugin (`.claude-plugin/plugin.json` names it
+   `review-loop`), and Claude Code loads a plugin in your skills directory
+   at the start of every session, with no install step. Its skill lives in
+   `skills/impl/`, so the command is `/review-loop:impl`; the skill reads
+   its `finding-bar.md` from that folder at runtime. Clone into a folder
+   directly under `~/.claude/skills/`, since that's where Claude Code looks.
 2. The Claude reviewer runs the built-in `/code-review` skill, so that must be
    available in your Claude Code install. A Codex reviewer, part of the
    default, needs the [Codex CLI](https://github.com/openai/codex)
@@ -34,7 +37,7 @@ on high effort or $10 for Opus 5.5 on xhigh effort, depending on diff size.
    PR draft) in a run directory: for a scratch spec, the directory holding
    it, so give each scratch spec a directory of its own; for a committed
    spec, `~/review-loop/<repo>/<its path in the repo>/`, without the
-   extension (`RUN_ROOT` in `SKILL.md`),
+   extension (`RUN_ROOT` in `skills/impl/SKILL.md`),
    made on first use. Keep scratch specs outside the repo too, e.g. under
    `~/review-loop/<repo>/<change>/`: Claude Code blocks a worktree
    session's file edits in the main checkout, so a run directory there
@@ -61,7 +64,7 @@ on high effort or $10 for Opus 5.5 on xhigh effort, depending on diff size.
    it, the diff is held to the spec alone, and a conflict between the two,
    or a place where the diff contradicts it and the spec is silent, comes
    to you.
-2. Run `/review-loop path/to/spec.md`, optionally with `--research-spec
+2. Run `/review-loop:impl path/to/spec.md`, optionally with `--research-spec
    <path>` (step 1), `--rounds N` to change
    the round cap from its default of 4, `--auto` to run without pausing for
    your decisions (see step 6), and `--reviewer claude|codex|both` to choose
@@ -104,11 +107,11 @@ on high effort or $10 for Opus 5.5 on xhigh effort, depending on diff size.
 
 You can interrupt at any time and resume in the same session by continuing the
 conversation. The log on disk is the loop's state, so you can also resume in a
-new session by running the same `/review-loop <spec>` command.
+new session by running the same `/review-loop:impl <spec>` command.
 
 ## What counts as a finding
 
-`finding-bar.md` is the contract both sides work to. I've set the finding bar
+`skills/impl/finding-bar.md` is the contract both sides work to. I've set the finding bar
 up based on my personal priorities / needs. In my setup, a Blocking finding must
 do one of these things: name a concrete trigger that reaches a failure, make the
 code simpler in a way the reviewer can name, or quote documentation that is
@@ -119,15 +122,15 @@ accepts a finding only after verifying it by the method the file gives for its c
 
 ## Things you may want to change
 
-- **The finding bar** (`finding-bar.md`). The most likely edit. You can make
+- **The finding bar** (`skills/impl/finding-bar.md`). The most likely edit. You can make
   the standards stricter or looser, add or remove categories, or restructure
   it completely. This is the one place to change it; both the reviewer
   and the implementer read it.
-- **What blocks approval** (`SKILL.md`, the verdict definitions in the reviewer
+- **What blocks approval** (`skills/impl/SKILL.md`, the verdict definitions in the reviewer
   prompt). In particular, making most or all simplifications Non-blocking would
   shorten loops at the cost of leaving extra duplication. (Trivial
   simplifications are already Non-blocking.)
-- **When the implementer must ask you** (`SKILL.md`, "Escalation"). As
+- **When the implementer must ask you** (`skills/impl/SKILL.md`, "Escalation"). As
   written, every reversal of a logged decision, every rejection of a
   Blocking finding, and every decision that would change what a result
   number means comes to you. Loosening either gives the implementer
@@ -137,10 +140,10 @@ accepts a finding only after verifying it by the method the file gives for its c
   provisional call you then reverse.
 - **The round cap** (`--rounds N`, default 4). Hitting it asks you rather
   than exiting, so it bounds cost without ending a productive loop.
-- **The review depth** (`REVIEW_LEVEL` in `SKILL.md`, default `high`).
+- **The review depth** (`REVIEW_LEVEL` in `skills/impl/SKILL.md`, default `high`).
   Lower levels are cheaper and shallower. A Codex reviewer's depth is set
   in your Codex config instead.
-- **Where run records go** (`RUN_ROOT` in `SKILL.md`, default
+- **Where run records go** (`RUN_ROOT` in `skills/impl/SKILL.md`, default
   `~/review-loop`), for specs committed in the repo. A scratch spec's
   records go beside it.
 
@@ -157,5 +160,5 @@ informally, by asking a session to run it by hand. A prompt that has worked for 
 > implementation. Ask for reviewer feedback on both research components and
 > engineering components.
 
-The spec that comes out is the input to `/review-loop`. I hope to make a proper
+The spec that comes out is the input to `/review-loop:impl`. I hope to make a proper
 spec-design version of this skill at some point.

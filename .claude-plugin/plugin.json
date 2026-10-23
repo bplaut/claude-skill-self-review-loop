@@ -1,0 +1,4 @@
+{
+  "name": "review-loop",
+  "description": "Implement a spec, then review the diff in a loop with fresh independent reviewers until the change is clean."
+}
