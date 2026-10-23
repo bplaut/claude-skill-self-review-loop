@@ -28,19 +28,20 @@ on high effort, depending on diff size.
    permissions and, if you use Claude Code's sandbox, add
    `codex exec --sandbox read-only *` to `sandbox.excludedCommands`, since
    Codex fails inside that sandbox.
-3. Keep each spec in a directory of its own, which also holds the run's
-   decision log and PR draft. A convention that works: outside the repo,
-   at `~/review-loop/<repo>/<change>/`. Claude Code blocks a worktree
+3. A spec is either committed in the repo (a design doc, say) or a scratch
+   file kept outside it. Each run keeps its records (the decision log, the
+   PR draft) in a run directory: for a scratch spec, the directory holding
+   it, so give each scratch spec a directory of its own; for a committed
+   spec, `~/review-loop/<repo>/<its path in the repo>/`, without the
+   extension (`RUN_ROOT` in `SKILL.md`),
+   made on first use. Keep scratch specs outside the repo too, e.g. under
+   `~/review-loop/<repo>/<change>/`: Claude Code blocks a worktree
    session's file edits in the main checkout, so a run directory there
    blocks worktree runs; outside the repo, every session reaches the same
-   single copy, and it outlives the worktree. Add the directory to
+   single copy, and it outlives the worktree. Add `~/review-loop` to
    `permissions.additionalDirectories` in `~/.claude/settings.json` so
-   sessions treat it like the project directory. A run directory inside the
-   repo also works if it is gitignored (the skill checks).
-4. On exit the skill moves the spec to `completed_specs/` at the top of the
-   checkout the session runs in and commits it, so the design record lands
-   with the code. Create nothing in advance; the directory is made on first
-   use.
+   sessions treat it like the project directory. A scratch spec in a
+   gitignored directory inside the repo also works (the skill checks).
 
 ## How a run goes
 
@@ -50,8 +51,17 @@ on high effort, depending on diff size.
    settled without escalation if the spec makes the scope clear enough. If the repo
    has a test suite, the spec should say which tests the change adds. You could
    modify the skill to allow thinner specs, but I've found detailed specs to
-   perform the best.
-2. Run `/review-loop path/to/spec.md`, optionally with `--rounds N` to change
+   perform the best. A spec committed in the repo is read as of the commit
+   the run starts from, so the change may rewrite it (to describe what was
+   built, if the repo's rules say so) and that rewrite is reviewed like any
+   other doc. If the change also has a research spec, saying what the code
+   should produce and why, pass it with `--research-spec <path>`: the
+   implementer and the reviewer read it as context and the run never edits
+   it, the diff is held to the spec alone, and a conflict between the two,
+   or a place where the diff contradicts it and the spec is silent, comes
+   to you.
+2. Run `/review-loop path/to/spec.md`, optionally with `--research-spec
+   <path>` (step 1), `--rounds N` to change
    the round cap from its default of 4, `--auto` to run without pausing for
    your decisions (see step 6), and `--reviewer claude|codex|both` to choose
    who reviews (default `claude`). `both` runs two reviewers per round, and a
@@ -60,11 +70,12 @@ on high effort, depending on diff size.
    its depth is whatever your Codex config sets (model, reasoning effort).
 3. Phase 0 checks the tree is clean and the spec is sufficient. If the spec
    has gaps, the session asks you before writing code and puts your answers
-   into the spec file. It then makes a new branch from wherever you are, so
+   into the spec file (for a committed spec, into the log, where they bind
+   like the spec's own text). It then makes a new branch from wherever you are, so
    start from the commit the change should build on.
 4. Phase 1 implements, committing as it goes.
-5. Phase 2 runs the reviewer with only the spec, the diff since the base
-   commit, the shared finding bar, and the log's context and rulings. It
+5. Phase 2 runs the reviewer with only the spec (and research spec, if
+   any), the diff since the base commit, the shared finding bar, and the log's context and rulings. It
    forms its findings before reading earlier rounds' triage, so it is not
    anchored by them. Its message starts with `VERDICT: APPROVED` or
    `VERDICT: NOT APPROVED` and labels every finding `[Blocking]` or
@@ -75,7 +86,8 @@ on high effort, depending on diff size.
    final. With `--auto`, escalations do not pause the loop: each is logged with
    a provisional decision (usually the implementer's own recommendation,
    preferring whatever is cheapest to undo; for a research decision, always the
-   spec's current text) and the loop continues, then presents every open
+   spec's text, a committed spec's as of the base commit with your rulings, or
+   the research spec's where the spec is silent) and the loop continues, then presents every open
    question in one batch when it would otherwise exit or hits the cap. Anything
    a reviewer notices about the research itself (a confound, a data pattern,
    what a number means) is logged as a note for you and included in every batch
@@ -84,10 +96,10 @@ on high effort, depending on diff size.
 7. Phase 4 decides: another round if the verdict was NOT APPROVED or the
    accepted fixes restructured code, otherwise exit. At the cap it asks you
    whether to stop or continue. On exit it restructures the commits into one
-   per logical change, files the spec, and hands you the review and
-   push commands. It never pushes. In a linked worktree it then detaches
-   `HEAD`, since git won't let you check out a branch another worktree
-   holds.
+   per logical change and hands you the review and push commands; with a
+   committed spec, the PR draft lists where the build departs from it. It
+   never pushes. In a linked worktree it then detaches `HEAD`, since git
+   won't let you check out a branch another worktree holds.
 
 You can interrupt at any time and resume in the same session by continuing the
 conversation. The log on disk is the loop's state, so you can also resume in a
@@ -127,9 +139,9 @@ accepts a finding only after verifying it by the method the file gives for its c
 - **The review depth** (`REVIEW_LEVEL` in `SKILL.md`, default `high`).
   Lower levels are cheaper and shallower. A Codex reviewer's depth is set
   in your Codex config instead.
-- **Where the spec is filed** (`completed_specs/` in the exit steps). Your
-  repo may have a different convention, or you might not want it committed
-  at all.
+- **Where run records go** (`RUN_ROOT` in `SKILL.md`, default
+  `~/review-loop`), for specs committed in the repo. A scratch spec's
+  records go beside it.
 
 ## Using the same loop to write a spec
 

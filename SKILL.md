@@ -1,7 +1,7 @@
 ---
 name: review-loop
 description: Implement a spec file, then loop with fresh independent reviewers (a Claude subagent running /code-review, Codex, or both) until the change is clean, triaging and logging every finding and escalating scope decisions to the user. Use only when the user runs /review-loop <path-to-spec-file>.
-argument-hint: <path-to-spec-file> [--rounds N] [--auto] [--reviewer claude|codex|both]
+argument-hint: <path-to-spec-file> [--research-spec <path>] [--rounds N] [--auto] [--reviewer claude|codex|both]
 ---
 
 # review-loop
@@ -9,11 +9,12 @@ argument-hint: <path-to-spec-file> [--rounds N] [--auto] [--reviewer claude|code
 You are the **implementer**. You build the change described in the spec file,
 then repeat rounds of independent review and triage until the change is clean.
 The reviewer is always fresh, a newly spawned subagent or a new Codex
-process, so it never sees your reasoning — only the spec, the diff, and the
-decision log.
+process, so it never sees your reasoning — only the spec (and research
+spec, if any), the diff, and the decision log.
 
 Arguments: `$ARGUMENTS` — the spec file path, optionally followed by any of
-`--rounds N`, `--auto` and `--reviewer claude|codex|both`.
+`--research-spec <path>`, `--rounds N`, `--auto` and
+`--reviewer claude|codex|both`.
 
 Constants (tweak here):
 
@@ -28,9 +29,22 @@ Constants (tweak here):
   by side. See Phase 2.
 - `REVIEW_LEVEL = high` (Claude reviewer only; a Codex reviewer's depth is
   the user's Codex configuration)
-- `RUN_DIR` = the directory containing the spec file. Everything this run
-  produces — the decision log, the PR draft, anything else — goes here, so
-  each invocation keeps its own records.
+- `RESEARCH_SPEC` = the `--research-spec` path if given, else none: a spec
+  of what the code produces and why, which the spec builds on. It is
+  context, not a second spec — the diff is held to the spec alone — and
+  the run never edits it. Where it and the spec conflict, or the diff
+  contradicts it on a point the spec leaves open, the user settles it (see
+  Escalation).
+- `RUN_ROOT = ~/review-loop`
+- `RUN_DIR` = for a scratch spec, the directory containing it; for an
+  in-repo spec, `RUN_ROOT/<repo>/<repo path without extension>/`, where
+  `<repo>` is the main worktree's directory name — the last component of
+  the first `worktree` line of `git worktree list --porcelain`, without a
+  trailing `.git`, the same from any checkout of the repository — and the
+  rest is the spec's repo path without its extension (Phase 0 says which
+  kind a spec is, and what its repo path is). Everything this run produces
+  — the decision log, the PR draft, anything else — goes here, so each
+  invocation keeps its own records.
 - `LOG = RUN_DIR/decisions.md`
 - `FINDING_BAR` = `finding-bar.md` beside this file (absolute path
   `~/.claude/skills/review-loop/finding-bar.md`). The categories a
@@ -43,11 +57,11 @@ Everything below serves these four. When in doubt, weigh them above the
 procedural detail.
 
 1. **The reviewer is independent.** A new reviewer every round, subagent or
-   Codex process, given only the spec, the diff, and the decision log —
-   never your reasoning.
+   Codex process, given only the spec (and research spec, if any), the
+   diff, and the decision log — never your reasoning.
 2. **Two channels only.** Anything the reviewer might need lives in the spec
-   or the decision log. Conversation with the user that the spec omits goes in
-   the log.
+   (with the research spec, if any) or the decision log. Conversation with
+   the user that the spec omits goes in the log.
 3. **You judge; the reviewer advises.** Accept a finding only if it names a
    concrete trigger, makes the code simpler, or quotes a doc that is
    objectively false; a plausible reason is not enough. Every accept and
@@ -63,34 +77,95 @@ Run these checks before writing any code. If any fails, stop and tell the user
 exactly which one and why; do not try to fix the repo state yourself.
 
 1. The first token of `$ARGUMENTS` is a path to an existing, non-empty
-   file. Read it in full. If `--rounds` is present, `N` must be a positive
-   integer; `--auto` takes no value; `--reviewer` takes exactly one of
-   `claude`, `codex`, `both`; anything else in `$ARGUMENTS` is an error.
-   With a Codex reviewer, `codex login status` must exit 0 — it fails when
-   the CLI is missing or logged out — so that stops the run now rather than
-   after implementation. Every check in this
-   phase applies in auto mode too: a failed
+   file. `--research-spec` takes exactly one value, a path (step 4 checks
+   it once step 3 has settled whether the run uses it). If `--rounds` is
+   present, `N` must be a positive integer; `--auto` takes no value;
+   `--reviewer` takes exactly one of `claude`, `codex`, `both`; anything
+   else in `$ARGUMENTS` is an error.
+   Every check in this phase applies in auto mode too: a failed
    check or an insufficient spec stops the run, since guessing there would
    poison everything after.
-2. **Is this a resume?** If `LOG` already exists, tell the user and ask whether
-   to resume from it or start over; never silently overwrite it. On start
-   over, rename the old log to `decisions-<YYYYMMDD-HHMM>.md` in `RUN_DIR`
-   so the earlier run's record survives, then continue as a fresh run. On
-   resume, see "Resuming" below; the remaining checks change meaning.
-3. No git operation is in progress: for each of `rebase-merge`,
+2. **Where the spec lives.** Here and in step 4, `<file>` is a spec's path
+   as given, made absolute, `<its dir>` the directory holding it and
+   `<file name>` its last component. A spec file is either in-repo or
+   scratch:
+   - **In-repo**: the file belongs to this repository — `git -C <its dir>
+     rev-parse --path-format=absolute --git-common-dir` prints the same
+     path as `git rev-parse --path-format=absolute --git-common-dir` run
+     here — and is not gitignored there (`git -C <its dir> check-ignore -q
+     <file name>` fails; `-C` resolves the path from `<its dir>`, so give
+     it the bare file name). Its directory may be another checkout of the
+     repository, such as the main checkout while you run in a linked
+     worktree; what identifies the file is its repo path,
+     `$(git -C <its dir> rev-parse --show-prefix)<file name>`.
+   - **Scratch**: anything else — outside the repository, or gitignored
+     inside it.
+
+   Sort the spec now. That fixes `RUN_DIR`; create it if it does not
+   exist. On a fresh run, `RESEARCH_SPEC` is sorted the same way; on
+   resume, its path, kind and repo path are the log header's (step 3).
+3. **Is this a resume?** If `LOG` already exists, its header must name this
+   spec — the same absolute path for a scratch spec, the same repo path
+   for an in-repo one — and this repository: its recorded git common dir
+   is what `git rev-parse --path-format=absolute --git-common-dir` prints
+   here, the same from any checkout of the repository and different for
+   another clone; if not, the log is another run's, so stop and tell the
+   user. Otherwise tell the user and ask
+   whether to resume from it or start over; never silently overwrite it.
+   On start over, continue as a fresh run with this invocation's flags,
+   telling the user where they differ from the old header's mode,
+   reviewers or research spec. The old log stays in place until the new
+   one is created (below), so a check that stops the run first leaves the
+   next invocation facing the same question. On resume, the mode, the
+   reviewers and `RESEARCH_SPEC` are the log header's, not this
+   invocation's flags — if the flags say otherwise, tell the user which
+   the run is using — and see "Resuming" below; the remaining checks
+   change meaning.
+4. **The run's inputs are usable.** With a Codex reviewer,
+   `codex login status` must exit 0 — it fails when the CLI is missing or
+   logged out — so that stops the run now rather than after
+   implementation; it runs on every invocation, resume included. On a
+   fresh run, `--research-spec`'s path, if given, is an existing,
+   non-empty file other than the spec itself (a different repo path if
+   both are in-repo, else a different real path, as `realpath` prints
+   it), and each in-repo spec must be committed at `HEAD` exactly as it
+   is on disk: `git rev-parse HEAD:<repo path>` and
+   `git hash-object --path=<repo path> <file>`, run at the top level of
+   this checkout, print the same hash. If not, stop and say which case it
+   is. A spec not yet committed at `HEAD` must be committed, and the run
+   started from a commit that has it — or, if it was meant as a scratch
+   spec, moved out of the repository or gitignored. A committed spec whose
+   file differs from `HEAD` holds either an uncommitted change, likely an
+   earlier attempt's or another session's — surface it, never revert it —
+   or, when the path given is in another checkout, that checkout's
+   different version: give this checkout's path, or start from a commit
+   whose spec matches. On a start over, the spec at `HEAD` must also match
+   the one at the old log's `BASE` (`git rev-parse <old BASE>:<repo
+   path>`); if not, `HEAD` holds a change to the spec, perhaps an earlier
+   attempt's rewrite — stop and ask the user which commit to start from.
+   If they confirm `HEAD`, continue; if they name another, tell them to
+   start from it and run the command again. On resume these commit checks
+   were made before.
+
+   Then read each spec in full: a scratch spec at its path, an in-repo
+   spec as of `BASE` — `git show <BASE>:<repo path>` — never from its
+   path, here or in any later phase, since the change may rewrite the
+   file (Phase 1). On a fresh run `BASE` is the current `HEAD` (recorded
+   below); on resume it is the log's.
+5. No git operation is in progress: for each of `rebase-merge`,
    `rebase-apply`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`,
    `sequencer` (a multi-commit cherry-pick or revert between commits),
    `test -e "$(git rev-parse --git-path <name>)"` fails. Ask git for the
    path: in a linked worktree `.git` is a file, so a literal
    `.git/<name>` never exists.
-4. Tree state. **Fresh run:** no tracked file is modified or staged —
+6. Tree state. **Fresh run:** no tracked file is modified or staged —
    `git status --porcelain` shows only `??` lines. Untracked files never
    enter `git diff <BASE>`; an uncommitted edit would. A dirty tree is
    likely another session's work — surface it, never revert it.
    **Resume:** a dirty tree is expected — it is this run's interrupted
    work. Show the user `git status` and `git diff --stat`, and ask whether to
    keep or discard it; do not stop.
-5. Nothing the run writes to `RUN_DIR` can enter the reviewed diff. That
+7. Nothing the run writes to `RUN_DIR` can enter the reviewed diff. That
    needs checking only when `RUN_DIR` is inside the current checkout:
    `git -C RUN_DIR rev-parse --show-toplevel` prints the same path as
    `git rev-parse --show-toplevel` (run both without changing directory).
@@ -100,7 +175,7 @@ exactly which one and why; do not try to fix the repo state yourself.
    `git -C RUN_DIR check-ignore -q .` succeeds; if not, hand the user the
    one-line `.gitignore` edit. Anywhere else (outside git, another
    repository, another checkout) needs no check.
-6. **The spec is sufficient** (fresh run only; on resume it was checked
+8. **The spec is sufficient** (fresh run only; on resume it was checked
    before). Scope disputes are settled by pointing at the spec, so it must
    carry enough to point at. Check that it states:
    - the goal — what should be true when the change is done;
@@ -116,11 +191,19 @@ exactly which one and why; do not try to fix the repo state yourself.
    Also read for ambiguities where the readings lead to materially
    different code. Missing non-goals is the most common gap ("add retry
    logic" doesn't say whether backoff tuning or a metrics counter is in
-   bounds). If anything is missing or ambiguous, **stop and discuss it with
-   The user** before writing code: list each gap with what you would assume.
-   Write the answers **into the spec file itself** and re-run this check.
-   This is a judgement, not a form — don't pad a spec that is already
-   sufficient.
+   bounds). `RESEARCH_SPEC` is not held to this list, but a conflict
+   between it and the spec is a gap too: a spec that narrows or fills in
+   the research spec does not conflict with it; one that says something
+   else about what the code produces does. If anything is missing or
+   ambiguous, **stop and discuss it with the user** before writing code:
+   list each gap with what you would assume. Write the answers **into the
+   spec file itself** if it is a scratch spec, and re-run this check. An
+   in-repo spec stays as committed — it is the reviewed design, and the
+   answers depart from it — so hold its answers until `LOG` is created
+   (below), where each becomes a `- ruling spec: <answer>` line under
+   `## Context` and binds like the spec's own text; re-run this check on
+   the spec together with those answers. This is a judgement, not a form —
+   don't pad a spec that is already sufficient.
 
 Then, on a fresh run:
 
@@ -138,7 +221,12 @@ Then, on a fresh run:
   reviewer needs to know which failures it inherited. If there is no suite,
   record "no suite": "run the tests" then means the hand checks the spec
   names, and nothing in this skill asks you to create a suite.
-- Create `LOG` with a header recording the spec path, the branch and the
+- On a start over, rename the old log to `decisions-<YYYYMMDD-HHMM>.md` in
+  `RUN_DIR` now, so the earlier run's record survives. Then create `LOG`
+  with a header recording the spec's absolute path and kind (`in-repo`,
+  with its repo path, or `scratch`), the same for `RESEARCH_SPEC` (or
+  `none`), the repository's git common dir (`git rev-parse
+  --path-format=absolute --git-common-dir`), the branch and the
   one it was made from (`detached` if none), `BASE`,
   the start time, the mode (`auto` or `interactive`), the reviewers
   (`claude`, `codex` or `claude+codex`), the test status at
@@ -147,7 +235,8 @@ Then, on a fresh run:
   told from pre-existing ones later). Then a `## Context` section listing
   every decision from your conversation with the user that the spec does not
   state — scope cuts, non-goals, deliberate simplifications, files that are
-  out of bounds — or "none".
+  out of bounds — or "none". For an in-repo spec, the Phase 0 answers are
+  among them, each as a `- ruling spec:` line (step 8).
 - With a Codex reviewer, write its prompt file now (see "Codex reviewer").
   Every placeholder in it is fixed from here on, so it is written once per
   run and every round reuses it.
@@ -184,12 +273,14 @@ rounds, from re-reporting a decision the code no longer follows.
 
 ~~~
 # review-loop decision log
-- spec: <path>   - branch: <name> (from <branch>)   - BASE: <sha>   - started: <time>
+- spec: <path> (in-repo <repo path> | scratch)   - research spec: <path> (in-repo <repo path> | scratch) | none
+- repo: <git common dir>   - branch: <name> (from <branch>)   - BASE: <sha>   - started: <time>
 - mode: auto | interactive
 - reviewers: claude | codex | claude+codex
 - tests at BASE: <pass/fail summary, or "no suite">
 - untracked at start: <paths>
 ## Context
+- ruling spec: <the user's answer> <- in-repo spec only: a Phase 0 gap answer
 ## Implementation decisions        <- Phase 1 only; complete before round 1
 - <decision> — <reason> [— superseded, see round N]   <- the suffix is the one edit allowed later
 ## Round N
@@ -213,12 +304,30 @@ outcome: repeat | exit | pause — <reason>   <- written before the round ends; 
 Build the change as you normally would, following every rule in the
 project's `CLAUDE.md`, and run its tests.
 
-**The spec and the log stay out of the code.** Docstrings, comments, tests,
-repo docs and commit messages never cite the spec or `LOG` by their own
-labels — "Decision 3's variance", "per finding 2", "the round 1 fix" — here
-or when applying fixes in later rounds. A reader of the code has neither
-file, so the reference explains nothing. When a decision shapes the code,
-write its substance (the formula, the rule, the reason) where the code is.
+**An in-repo spec is also a doc of the repo.** Whatever the repo's own
+rules have the implementing change do to its design doc — rewrite it to
+describe what was built, say — is part of the change: do it here, to the
+file at its repo path in this checkout (never at the path you were given,
+if that is another checkout), keep it current as later rounds' fixes
+land, and the reviewer reviews it like any other doc in the diff. It is
+still read as of `BASE` (Phase 0), never from the rewritten file. A move,
+rename or deletion of the spec is the exception: the run is found again
+by the spec's path, so it leaves that to the user and the exit report
+names it. `RESEARCH_SPEC` is never edited by the run, whatever the repo's
+rules say: it is the user's design input and may cover more than this
+change. If those rules call for changing it, the exit report says so.
+
+**The specs and the log stay out of the code.** Docstrings, comments,
+tests, repo docs and commit messages never cite the spec, `RESEARCH_SPEC`
+or `LOG` by their own labels — "Decision 3's variance", "per finding 2",
+"the round 1 fix" — here or when applying fixes in later rounds. A reader
+of the code has no log, and a spec's labels need not survive (a scratch
+spec is never committed; an in-repo one may be rewritten), so the
+reference explains nothing. An in-repo spec's own text is the exception:
+references within it to its own sections, or to an in-repo research
+spec's, are ordinary cross-references between committed docs. When a
+decision shapes the code, write its substance (the formula, the rule, the
+reason) where the code is.
 
 **Commit as you go.** Commit whenever a coherent piece lands so progress is
 tracked. The history is restructured once, at exit, so intermediate commits
@@ -263,7 +372,11 @@ round, so nothing from the round enters the log until both have returned
 round.
 
 The reviewer prompt must contain exactly this information and nothing about
-your own reasoning, plan, or self-review:
+your own reasoning, plan, or self-review. Fill `<spec location>` with the
+spec's path for a scratch spec, and for an in-repo one with
+`` `git show <BASE>:<repo path>` ``; fill `<research spec location>` the
+same way. Each `[If ...]` passage goes in, without its brackets and
+condition, only when the condition holds.
 
 ```
 You are an independent code reviewer. You must not edit any file or run
@@ -273,7 +386,23 @@ be told the same — pass this constraint into each helper's prompt.
 You are a subagent: your final message is the only thing the parent
 session sees, and your turn ending is final — nothing re-invokes you.
 
-1. Read the spec at <spec path>. The diff is meant to implement it.
+1. Read the spec at <spec location>. The diff is meant to implement it.
+   [If RESEARCH_SPEC: Also read the research spec at <research spec
+   location>: it says what the code produces and why, and the spec builds
+   on it. It is context, not a second spec: hold the diff to the spec
+   alone. Report as a spec gap (step 5) a conflict between the two specs,
+   or a place where the diff contradicts the research spec on a point the
+   spec leaves open. A spec that narrows or fills in the research spec
+   does not conflict with it. The run never changes the research spec: if
+   the repository's rules call for updating it, that is left to the user
+   and is not a finding; a diff that changes it is one.]
+   [If the spec is in-repo: The spec read with `git show` is the version
+   as of <BASE>. If the diff changes that file, the change is the
+   repository's own update of its design doc: review it like any other
+   doc in the diff, against the code. A move, rename or deletion of that
+   file that the repository's rules call for is left to the user: its
+   absence is not a finding, and a diff that moves, renames or deletes
+   the file is one.]
 2. Read the finding bar at <FINDING_BAR>. Every [Blocking] finding you
    raise must meet one of its categories and say which; [Non-blocking]
    findings need no category.
@@ -299,7 +428,8 @@ session sees, and your turn ending is final — nothing re-invokes you.
    results, so **spawn every helper with `run_in_background: false`** and
    read each result before moving on. Never end your turn while a helper is
    still running — "waiting for the finders" is a failed review.
-5. Also check the diff against the spec and the implementation decisions:
+5. Also check the diff against the spec — with the log's `- ruling spec:`
+   lines, which bind like its text — and the implementation decisions:
    anything the spec requires that the diff does not do, or does
    differently without a logged decision, is a finding. If you think the
    spec itself is missing something, raise it as a **spec gap** marked
@@ -487,6 +617,10 @@ Escalate (stop and ask, do not guess) when:
   (add scope, drop scope, change an interface the spec fixes);
 - the spec is ambiguous and the readings lead to materially different code
   (routine judgement calls you make yourself, as a careful colleague would);
+- the spec and `RESEARCH_SPEC` conflict on something the diff does, or the
+  diff contradicts `RESEARCH_SPEC` on a point the spec leaves open. Check
+  the conflict is real first: a spec that narrows or fills in the research
+  spec does not conflict with it;
 - a finding would reverse any logged decision (yours or the user's);
 - **the decision would change what a result number means or which
   records it is computed over** — a metric's definition or denominator, a
@@ -541,7 +675,9 @@ What changes is that you do not stop for them:
   it is; for a spec ambiguity, building the reading you recommend. When
   options are close, choose the one that is cheapest to undo, and say so.
   For a research decision (the trigger above), the provisional is always
-  the spec's current text, whatever you would recommend: past runs show
+  the spec's current text (for an in-repo spec, its text as of `BASE`
+  together with the log's rulings) and, where the spec is silent,
+  `RESEARCH_SPEC`'s, whatever you would recommend: past runs show
   the implementer's recommendation is reversed most often on exactly
   these, and building a research preference into the code makes later
   rounds review numbers the user has not agreed to. List these first in
@@ -556,8 +692,8 @@ What changes is that you do not stop for them:
   (Phase 4's exit conditions) or the cap is reached with the loop wanting to
   continue, check for open escalations. If there are none, exit as usual.
   If there are any, append `outcome: pause — <n> open escalations` to the
-  round, do **not** run the exit steps (no restructure, no filing the spec,
-  no PR draft, no freeing the branch), and present every open question in one message: context,
+  round, do **not** run the exit steps (no restructure, no PR draft, no
+  freeing the branch), and present every open question in one message: context,
   options, your recommendation, and what was done provisionally. Add the
   cap question if the cap applies, and every `- for the user:` line logged
   since the last batch, in their own section after the questions. Then end
@@ -613,7 +749,10 @@ On exit:
    `rebase -i`; never `--force`, never touch commits before `BASE`). Each
    commit must stand on its own — its code runs and its docs describe the
    state at that commit, not a later one — with no "address review"
-   commits. Afterwards assert `git rev-parse HEAD^{tree}` is unchanged from
+   commits. If Phase 1 changed an in-repo spec and the repo's rules don't
+   say which commit that change goes in, it lands in the last commit or in
+   one of its own after the code. Afterwards
+   assert `git rev-parse HEAD^{tree}` is unchanged from
    before the restructure; a differing tree means the rebuild lost or
    altered a change. That check proves content survived, not that each
    commit stands on its own — read each commit's diff for that. Never
@@ -621,26 +760,21 @@ On exit:
    rebuild the commits explicitly (soft-reset to `BASE`, restore each
    commit's files, commit) — a scripted resolver has silently dropped
    content before.
-2. **File the spec.** Move the spec file to `completed_specs/` at the top
-   level of the current checkout (`git rev-parse --show-toplevel`), where
-   the branch is, even when `RUN_DIR` is outside it (create the
-   directory if needed; stop if a file of that name is
-   already there) and commit it on its own, after the code commits. The
-   subject names the change; the body lists the subjects of the commits the
-   spec covers, one per line, from `git log --format=%s --reverse
-   <BASE>..HEAD` — subjects only, no hashes, since a later restructure would
-   change the hashes and the covered commits are the ones directly
-   preceding this one anyway. This is the only commit that touches the
-   spec, so the logical commits stay clean and a reader of history can find
-   the design intent behind them. `LOG` stays in `RUN_DIR`, untracked.
-3. Append `## Result` to `LOG`: rounds run, findings
+2. Append `## Result` to `LOG`: rounds run, findings
    accepted/rejected/escalated/deferred per round, every `[defer]` line
    collected into one list, every `- for the user:` line collected into
-   another, and why the loop stopped.
-4. If the project's git workflow calls for a PR, draft it as that workflow
+   another, and why the loop stopped. `LOG` and a scratch spec stay in
+   `RUN_DIR`, never committed.
+3. If the project's git workflow calls for a PR, draft it as that workflow
    says (title and body to a file in `RUN_DIR`, hand the user the push-and-create
-   command).
-5. **Free the branch** if this checkout is a linked worktree, which it is
+   command). With an in-repo spec, the body also states where the build
+   departs from the spec as of `BASE`, since a doc rewritten to describe
+   what was built no longer shows what changed: every entry in
+   `## Context` that no later ruling reverses (the `- ruling spec:`
+   answers among them), and every implementation decision not
+   superseded, round `- decision:` line and ruling that contradicts or
+   narrows what the spec says — not the routine choices it left open.
+4. **Free the branch** if this checkout is a linked worktree, which it is
    when `git rev-parse --path-format=absolute --git-dir` and
    `git rev-parse --path-format=absolute --git-common-dir` print different
    paths: run `git switch --detach`. Git refuses to check out a branch that
@@ -649,7 +783,7 @@ On exit:
    file changes; switching to the default branch instead would fail
    whenever the main checkout has it. In the main checkout, skip this step:
    the branch is already the user's.
-6. Report to the user: what was built, the round count, the log path, any
+5. Report to the user: what was built, the round count, the log path, any
    rulings they made, every `[defer]` line collected into one list, every
    `- for the user:` line collected into another (the research observations
    the reviewers made along the way, which otherwise survive only in the
@@ -659,15 +793,16 @@ On exit:
    would carry those commits too; compare against the remote's default
    branch, which a PR targets and local `main` can lag, and against the
    local default branch only when there is no remote), whether the branch
-   was freed, and `git log -p --reverse <BASE>..<branch>` to review the
-   commits — the branch, not `HEAD`, since the user runs it from their own
-   checkout.
+   was freed, whether the repo's rules call for a change to
+   `RESEARCH_SPEC`, or a move, rename or deletion of the spec, that the
+   run left to them, and
+   `git log -p --reverse <BASE>..<branch>` to review the commits — the
+   branch, not `HEAD`, since the user runs it from their own checkout.
 
 If the user asks for changes after exit, `git switch <branch>` first. If
 git refuses because the branch is checked out elsewhere, tell them rather
 than committing on a detached `HEAD`.
 
 The user can interrupt at any time; a later `/review-loop <same spec>` resumes
-from `LOG` (Phase 0). The mode and the reviewers come from the log header
-on resume, not from the new invocation's flags; if the flags say otherwise,
-tell the user which the run is using.
+from `LOG`, with the mode, the reviewers and the research spec the log
+recorded (Phase 0, step 3).
