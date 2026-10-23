@@ -102,31 +102,21 @@ exactly which one and why; do not try to fix the repo state yourself.
      inside it.
 
    Sort the spec now. That fixes `RUN_DIR`; create it if it does not
-   exist. On a fresh run, `RESEARCH_SPEC` is sorted the same way; on
-   resume, its path, kind and repo path are the log header's (step 3).
-3. **Is this a resume?** If `LOG` already exists, its header must name this
-   spec — the same absolute path for a scratch spec, the same repo path
-   for an in-repo one — and this repository: its recorded git common dir
-   is what `git rev-parse --path-format=absolute --git-common-dir` prints
-   here, the same from any checkout of the repository and different for
-   another clone; if not, the log is another run's, so stop and tell the
-   user. Otherwise tell the user and ask
-   whether to resume from it or start over; never silently overwrite it.
-   On start over, continue as a fresh run with this invocation's flags,
-   telling the user where they differ from the old header's mode,
-   reviewers or research spec. The old log stays in place until the new
-   one is created (below), so a check that stops the run first leaves the
-   next invocation facing the same question. On resume, the mode, the
-   reviewers and `RESEARCH_SPEC` are the log header's, not this
-   invocation's flags — if the flags say otherwise, tell the user which
-   the run is using — and see "Resuming" below; the remaining checks
-   change meaning.
+   exist. On a fresh run, sort `RESEARCH_SPEC` the same way.
+3. **Is this a resume?** If `LOG` exists, ask the user whether to resume
+   it or start over; never overwrite it silently. To resume, see
+   "Resuming" below. To start over, run as a fresh run, telling the user
+   where this invocation's flags differ from the old header's mode,
+   reviewers or research spec; the old log is renamed when the new one is
+   created (below). If the spec at `HEAD` differs from the old log's
+   `BASE` version — `HEAD` may hold the old run's own rewrite — ask the
+   user which commit to start from. The run starts from `HEAD`, so for
+   another commit they check it out and run the command again.
 4. **The run's inputs are usable.** With a Codex reviewer,
    `codex login status` must exit 0 — it fails when the CLI is missing or
    logged out — so that stops the run now rather than after
-   implementation; it runs on every invocation, resume included. On a
-   fresh run, `--research-spec`'s path, if given, is an existing,
-   non-empty file other than the spec itself (a different repo path if
+   implementation. On a fresh run, `--research-spec`'s path, if given, is
+   an existing, non-empty file other than the spec itself (a different repo path if
    both are in-repo, else a different real path, as `realpath` prints
    it), and each in-repo spec must be committed at `HEAD` exactly as it
    is on disk: `git rev-parse HEAD:<repo path>` and
@@ -139,13 +129,7 @@ exactly which one and why; do not try to fix the repo state yourself.
    earlier attempt's or another session's — surface it, never revert it —
    or, when the path given is in another checkout, that checkout's
    different version: give this checkout's path, or start from a commit
-   whose spec matches. On a start over, the spec at `HEAD` must also match
-   the one at the old log's `BASE` (`git rev-parse <old BASE>:<repo
-   path>`); if not, `HEAD` holds a change to the spec, perhaps an earlier
-   attempt's rewrite — stop and ask the user which commit to start from.
-   If they confirm `HEAD`, continue; if they name another, tell them to
-   start from it and run the command again. On resume these commit checks
-   were made before.
+   whose spec matches.
 
    Then read each spec in full: a scratch spec at its path, an in-repo
    spec as of `BASE` — `git show <BASE>:<repo path>` — never from its
@@ -158,13 +142,11 @@ exactly which one and why; do not try to fix the repo state yourself.
    `test -e "$(git rev-parse --git-path <name>)"` fails. Ask git for the
    path: in a linked worktree `.git` is a file, so a literal
    `.git/<name>` never exists.
-6. Tree state. **Fresh run:** no tracked file is modified or staged —
-   `git status --porcelain` shows only `??` lines. Untracked files never
-   enter `git diff <BASE>`; an uncommitted edit would. A dirty tree is
-   likely another session's work — surface it, never revert it.
-   **Resume:** a dirty tree is expected — it is this run's interrupted
-   work. Show the user `git status` and `git diff --stat`, and ask whether to
-   keep or discard it; do not stop.
+6. Tree state (a resume's is under "Resuming"): no tracked file is
+   modified or staged — `git status --porcelain` shows only `??` lines.
+   Untracked files never enter `git diff <BASE>`; an uncommitted edit
+   would. A dirty tree is likely another session's work — surface it,
+   never revert it.
 7. Nothing the run writes to `RUN_DIR` can enter the reviewed diff. That
    needs checking only when `RUN_DIR` is inside the current checkout:
    `git -C RUN_DIR rev-parse --show-toplevel` prints the same path as
@@ -225,8 +207,7 @@ Then, on a fresh run:
   `RUN_DIR` now, so the earlier run's record survives. Then create `LOG`
   with a header recording the spec's absolute path and kind (`in-repo`,
   with its repo path, or `scratch`), the same for `RESEARCH_SPEC` (or
-  `none`), the repository's git common dir (`git rev-parse
-  --path-format=absolute --git-common-dir`), the branch and the
+  `none`), the branch and the
   one it was made from (`detached` if none), `BASE`,
   the start time, the mode (`auto` or `interactive`), the reviewers
   (`claude`, `codex` or `claude+codex`), the test status at
@@ -242,25 +223,18 @@ Then, on a fresh run:
   run and every round reuses it.
 
 **Resuming.** The spec and the log are your only state (a fresh session has
-no memory of the last one). `BASE` and the branch are the values in the log
-header, **not** the current `HEAD`; if you are not on that branch, stop and
-tell the user. Find the last `## Round N` heading and re-enter at its first
-incomplete step:
-
-- no round heading → Phase 1 unfinished; compare `git diff <BASE>` to the spec
-- heading but no pasted reviews → run round N's reviewers, all of them
-- reviews pasted but no decisions → triage
-- an `[escalate]` entry with no matching `- ruling` line → in interactive
-  mode the loop paused on a question; take the user's answers from the
-  current conversation, or ask again, record them, then continue that
-  round. In auto mode an open escalation with a `provisional:` line is not
-  a pause; continue with the round's next incomplete step
-- decisions but no `applied, committed` → apply and commit
-- `applied, committed` but no `outcome:` line → decide Phase 4 and write it
-- `outcome: repeat` → start round N+1; `outcome: exit` → the exit steps
-- `outcome: pause` (auto mode) → the batch is awaiting rulings. If the
-  rulings are in the current conversation, record and apply them and
-  continue per "Auto mode"; otherwise present the batch again
+no memory of the last one). Take the branch, `BASE`, mode, reviewers and
+research spec from the log's header, not from `HEAD` or this invocation's
+flags, and tell the user where the flags differ. A field the header lacks
+predates it: no `reviewers` line is a `claude` run, no `mode` line an
+interactive one, no research-spec line none. If you are not on that
+branch, stop and tell the user. A dirty tree is then this run's
+interrupted work: show `git status` and `git diff --stat` and ask whether
+to keep or discard it; never revert it on your own. Of Phase 0, the Codex
+login check, step 4's reading of the specs as of the log's `BASE`, and
+step 5 still apply; the fresh-run checks were made when the run began.
+Then read the log and continue from the first step it does not record as
+done.
 
 The log is **append-only** and has a fixed shape. Nothing parses it; a
 fresh session reads it to find its place, and a predictable shape makes
@@ -274,7 +248,7 @@ rounds, from re-reporting a decision the code no longer follows.
 ~~~
 # review-loop decision log
 - spec: <path> (in-repo <repo path> | scratch)   - research spec: <path> (in-repo <repo path> | scratch) | none
-- repo: <git common dir>   - branch: <name> (from <branch>)   - BASE: <sha>   - started: <time>
+- branch: <name> (from <branch>)   - BASE: <sha>   - started: <time>
 - mode: auto | interactive
 - reviewers: claude | codex | claude+codex
 - tests at BASE: <pass/fail summary, or "no suite">
@@ -805,5 +779,4 @@ git refuses because the branch is checked out elsewhere, tell them rather
 than committing on a detached `HEAD`.
 
 The user can interrupt at any time; a later `/review-loop <same spec>` resumes
-from `LOG`, with the mode, the reviewers and the research spec the log
-recorded (Phase 0, step 3).
+from `LOG` (see "Resuming").
