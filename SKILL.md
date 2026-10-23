@@ -623,9 +623,10 @@ Escalate (stop and ask, do not guess) when:
   spec does not conflict with it;
 - a finding would reverse any logged decision (yours or the user's);
 - **the decision would change what a result number means or which
-  records it is computed over** — a metric's definition or denominator, a
-  judge's template, labels or notes, which sentinel or unjudged records
-  are excluded, a sampling parameter, which models or cells are charted.
+  records it is computed over** — a metric's definition or denominator,
+  which records are excluded (failed, errored or unscored ones), a scoring
+  rule or the instructions a grader follows, a sampling parameter, which
+  conditions are reported.
   These are research decisions and the most important escalations of all:
   an engineering call that goes wrong is caught by the next review, but a
   research call that goes wrong silently moves the numbers the project
