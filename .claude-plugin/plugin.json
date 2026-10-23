@@ -1,4 +1,4 @@
 {
   "name": "review-loop",
-  "description": "Implement a spec, then review the diff in a loop with fresh independent reviewers until the change is clean."
+  "description": "Review loops with fresh independent reviewers: one refines a spec before it is built, the other implements a spec and reviews the diff until the change is clean."
 }

@@ -1,7 +1,10 @@
-# A Claude skill for iterated code review
+# Claude skills for iterated review of specs and code
 
-This repo implements /review-loop:impl, a Claude Code skill that implements a spec
-and then iterates with an independent reviewer until the change is clean. One
+This repo is a Claude Code plugin, `review-loop`, with two skills.
+`/review-loop:spec` refines a design spec before anything is built; it is
+described under [Reviewing a spec](#reviewing-a-spec).
+`/review-loop:impl` implements a spec and then iterates with an independent
+reviewer until the change is clean. One
 Claude session writes the code; a fresh reviewer (a Claude subagent, Codex, or
 one of each) reviews it each round with no access to the implementer's
 reasoning. After each review, the implementer
@@ -20,24 +23,25 @@ on high effort or $10 for Opus 5.5 on xhigh effort, depending on diff size.
 
    The repo is a plugin (`.claude-plugin/plugin.json` names it
    `review-loop`), and Claude Code loads a plugin in your skills directory
-   at the start of every session, with no install step. Its skill lives in
-   `skills/impl/`, so the command is `/review-loop:impl`; the skill reads
-   its `finding-bar.md` from that folder at runtime. Clone into a folder
+   at the start of every session, with no install step. Its skills live in
+   `skills/spec/` and `skills/impl/`, so the commands are
+   `/review-loop:spec` and `/review-loop:impl`; each skill reads the files
+   beside its `SKILL.md`, such as its `finding-bar.md`, at runtime. Clone into a folder
    directly under `~/.claude/skills/`, since that's where Claude Code looks.
-2. The Claude reviewer runs the built-in `/code-review` skill, so that must be
-   available in your Claude Code install. A Codex reviewer, part of the
-   default, needs the [Codex CLI](https://github.com/openai/codex)
+2. The implementation's Claude reviewer runs the built-in `/code-review`
+   skill, so that must be available in your Claude Code install. A Codex
+   reviewer, part of both skills' default, needs the [Codex CLI](https://github.com/openai/codex)
    installed and logged in (or pass `--reviewer claude` to go without); it
    runs as `codex exec --sandbox read-only`, so allow that command in your
    permissions and, if you use Claude Code's sandbox, add
    `codex exec --sandbox read-only *` to `sandbox.excludedCommands`, since
    Codex fails inside that sandbox.
-3. A spec is either committed in the repo (a design doc, say) or a scratch
-   file kept outside it. Each run keeps its records (the decision log, the
+3. A spec is either in the repo (a design doc, say; `/review-loop:impl`
+   needs it committed) or a scratch file kept outside it. Each run keeps its records (the decision log, the
    PR draft) in a run directory: for a scratch spec, the directory holding
-   it, so give each scratch spec a directory of its own; for a committed
-   spec, `~/review-loop/<repo>/<its path in the repo>/`, without the
-   extension (`RUN_ROOT` in `skills/impl/SKILL.md`),
+   it, so give each scratch spec a directory of its own; for a spec in
+   the repo, `~/review-loop/<repo>/<its path in the repo>/`, without the
+   extension (`RUN_ROOT` in each skill's `SKILL.md`),
    made on first use. Keep scratch specs outside the repo too, e.g. under
    `~/review-loop/<repo>/<change>/`: Claude Code blocks a worktree
    session's file edits in the main checkout, so a run directory there
@@ -119,10 +123,14 @@ objectively false. Non-blocking findings (naming, wording, and the like) need no
 category. I explicitly state that guarding against hypothetical future edits
 is not a finding, because I found that this is a path to scope creep. The implementer
 accepts a finding only after verifying it by the method the file gives for its category.
+A spec review has its own bar, `skills/spec/finding-bar.md`, with research and
+engineering categories and the same rule against guarding hypothetical future edits.
 
 ## Things you may want to change
 
-- **The finding bar** (`skills/impl/finding-bar.md`). The most likely edit. You can make
+- **The finding bar** (`skills/impl/finding-bar.md`, and
+  `skills/spec/finding-bar.md` for spec reviews, whose categories the role
+  sections of `skills/spec/reviewer-brief.md` name). The most likely edit. You can make
   the standards stricter or looser, add or remove categories, or restructure
   it completely. This is the one place to change it; both the reviewer
   and the implementer read it.
@@ -143,22 +151,42 @@ accepts a finding only after verifying it by the method the file gives for its c
 - **The review depth** (`REVIEW_LEVEL` in `skills/impl/SKILL.md`, default `high`).
   Lower levels are cheaper and shallower. A Codex reviewer's depth is set
   in your Codex config instead.
-- **Where run records go** (`RUN_ROOT` in `skills/impl/SKILL.md`, default
-  `~/review-loop`), for specs committed in the repo. A scratch spec's
-  records go beside it.
+- **Where run records go** (`RUN_ROOT` in each skill's `SKILL.md`, default
+  `~/review-loop`; keep the two equal), for specs in the repo. A scratch spec's
+  records go beside it. A spec review writes under `feedback/` in the same
+  run directory the implementation later uses.
+- **The skeptic pass on specs** (`--skeptics`, default `on`). On, a fresh
+  subagent tries to refute each Blocking finding before it is decided;
+  off, rounds are cheaper and faster.
 
-## Using the same loop to write a spec
+## Reviewing a spec
 
-The skill implements a spec; it does not write one. But the same
-implementer-and-fresh-reviewer structure works for drafting the spec itself,
-informally, by asking a session to run it by hand. A prompt that has worked for me:
+`/review-loop:spec path/to/spec.md` runs the same kind of loop on a spec,
+before anything is built. One session is the author and improves the spec.
+Fresh reviewers in a research role, an engineering role or both, chosen
+from what the spec contains (research first while the research design is
+still open), review it each round against `skills/spec/finding-bar.md`. Each
+reviewer reads the spec, the bar and a short brief of what you have
+settled, never the author's reasoning or the log. With `--skeptics on`, the
+default, each Blocking finding also gets a fresh subagent that tries to
+refute it before the author decides, as a check on accepting too readily.
 
-> I want you to engage in a review loop for this spec, similar to the
-> review-loop skill, but here the goal is just to write the spec, not to
-> implement. You will need to create your own reviewer prompts for the subagents
-> and your own finding bar, as the current version is only for
-> implementation. Ask for reviewer feedback on both research components and
-> engineering components.
+The author triages every finding into a log under `feedback/` in the run
+directory, so a spec's review and its later implementation keep their
+records together. Research decisions, scope, and any Blocking finding the
+author disagrees with come to you. With `--auto`, research and scope
+questions are parked in the spec with nothing built on them, a Blocking
+finding the author disagrees with is rejected provisionally and closed
+only if the next round leaves it uncontested, and the open questions come
+to you in one batch. If the spec implements a research spec, pass it with
+`--research-spec <path>`: the run never edits it and holds the spec to it.
+The other options are `--rounds N` (default 4), `--auto` and
+`--reviewer claude|codex|both` (default `both`).
 
-The spec that comes out is the input to `/review-loop:impl`. I hope to make a proper
-spec-design version of this skill at some point.
+The loop ends when every role passes, after a final check of the edits no
+reviewer saw, and leaves a spec that stands alone: everything the
+implementer needs and no trace of the review. It does not start the
+implementation: when you are ready, often in a new session or after
+teammates have read the spec, run `/review-loop:impl` on it (with
+`--research-spec` if it has one), committing in-repo specs first as your
+project lands design docs.
