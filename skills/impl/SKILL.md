@@ -1,7 +1,7 @@
 ---
 name: impl
 description: Implement a spec file, then loop with fresh independent reviewers (a Claude subagent running /code-review, Codex, or both) until the change is clean, triaging and logging every finding and escalating scope decisions to the user. Use only when the user runs /review-loop:impl <path-to-spec-file>.
-argument-hint: <path-to-spec-file> [--research-spec <path>] [--rounds N] [--auto] [--reviewer claude|codex|both]
+argument-hint: <path-to-spec-file> [--research-spec <path>] [--rounds N] [--auto] [--reviewer claude|codex|both] [--skeptics on|off]
 ---
 
 # review-loop:impl
@@ -13,8 +13,8 @@ process, so it never sees your reasoning — only the spec (and research
 spec, if any), the diff, and the decision log.
 
 Arguments: `$ARGUMENTS` — the spec file path, optionally followed by any of
-`--research-spec <path>`, `--rounds N`, `--auto` and
-`--reviewer claude|codex|both`.
+`--research-spec <path>`, `--rounds N`, `--auto`,
+`--reviewer claude|codex|both` and `--skeptics on|off`.
 
 Constants (tweak here):
 
@@ -29,6 +29,8 @@ Constants (tweak here):
   by side. See Phase 2.
 - `REVIEW_LEVEL = high` (Claude reviewer only; a Codex reviewer's depth is
   the user's Codex configuration)
+- `SKEPTICS` = the `--skeptics` value, else `off`. See "Skeptic pass" in
+  Phase 3.
 - `RESEARCH_SPEC` = the `--research-spec` path if given, else none: a spec
   of what the code produces and why, which the spec builds on. It is
   context, not a second spec — the diff is held to the spec alone — and
@@ -80,8 +82,9 @@ exactly which one and why; do not try to fix the repo state yourself.
    file. `--research-spec` takes exactly one value, a path (step 4 checks
    it once step 3 has settled whether the run uses it). If `--rounds` is
    present, `N` must be a positive integer; `--auto` takes no value;
-   `--reviewer` takes exactly one of `claude`, `codex`, `both`; anything
-   else in `$ARGUMENTS` is an error.
+   `--reviewer` takes exactly one of `claude`, `codex`, `both`;
+   `--skeptics` takes `on` or `off`; anything else in `$ARGUMENTS` is an
+   error.
    Every check in this phase applies in auto mode too: a failed
    check or an insufficient spec stops the run, since guessing there would
    poison everything after.
@@ -107,7 +110,7 @@ exactly which one and why; do not try to fix the repo state yourself.
    it or start over; never overwrite it silently. To resume, see
    "Resuming" below. To start over, run as a fresh run, telling the user
    where this invocation's flags differ from the old header's mode,
-   reviewers or research spec; the old log is renamed when the new one is
+   reviewers, skeptics or research spec; the old log is renamed when the new one is
    created (below). If the spec at `HEAD` differs from the old log's
    `BASE` version — `HEAD` may hold the old run's own rewrite — ask the
    user which commit to start from. The run starts from `HEAD`, so for
@@ -209,7 +212,7 @@ Then, on a fresh run:
   `none`), the branch and the
   one it was made from (`detached` if none), `BASE`,
   the start time, the mode (`auto` or `interactive`), the reviewers
-  (`claude`, `codex` or `claude+codex`), the test status at
+  (`claude`, `codex` or `claude+codex`), skeptics (`on` or `off`), the test status at
   `BASE`, and the untracked paths present
   now (`git status --porcelain | grep '^??'`, so your own new files can be
   told from pre-existing ones later). Then a `## Context` section listing
@@ -222,11 +225,12 @@ Then, on a fresh run:
   run and every round reuses it.
 
 **Resuming.** The spec and the log are your only state (a fresh session has
-no memory of the last one). Take the branch, `BASE`, mode, reviewers and
-research spec from the log's header, not from `HEAD` or this invocation's
-flags, and tell the user where the flags differ. A field the header lacks
-predates it: no `reviewers` line is a `claude` run, no `mode` line an
-interactive one, no research-spec line none. If you are not on that
+no memory of the last one). Take the branch, `BASE`, mode, reviewers,
+skeptics and research spec from the log's header, not from `HEAD` or this
+invocation's flags, and tell the user where the flags differ. A field the
+header lacks predates it: no `reviewers` line is a `claude` run, no `mode`
+line an interactive one, no `skeptics` line off, no research-spec line
+none. If you are not on that
 branch, stop and tell the user. A dirty tree is then this run's
 interrupted work: show `git status` and `git diff --stat` and ask whether
 to keep or discard it; never revert it on your own. Of Phase 0, the Codex
@@ -250,6 +254,7 @@ rounds, from re-reporting a decision the code no longer follows.
 - branch: <name> (from <branch>)   - BASE: <sha>   - started: <time>
 - mode: auto | interactive
 - reviewers: claude | codex | claude+codex
+- skeptics: on | off
 - tests at BASE: <pass/fail summary, or "no suite">
 - untracked at start: <paths>
 ## Context
@@ -262,6 +267,7 @@ review started <time>
 ```<its final message, verbatim>```
 - [accept|reject|escalate|defer] <file:line> — <summary> (<reviewer(s)>)
   reason: <one sentence>
+  skeptic: <its verdict, in a line> <- Blocking findings, with skeptics on
   provisional: <what you did meanwhile> <- auto mode, [escalate] entries only
 - decision: <what and why>          <- a design choice made while fixing
 - ruling <file:line>: <the user's answer> <- appended when they answer; never edit the entry above
@@ -514,6 +520,18 @@ fenced block labelled with its reviewer (`claude:` or `codex:`). Not before:
 a reviewer still running reads `LOG`, and must not find the other's review
 of the same round there. The user and later reviewers must be able to see
 what was actually said, not your paraphrase of it.
+
+**Skeptic pass** (`SKEPTICS`, off by default). Before deciding anything,
+give each Blocking finding a fresh `general-purpose` subagent, all at once,
+with the finding verbatim and the inputs a reviewer gets (the spec, the
+research spec if any, `git diff <BASE>`, `FINDING_BAR`, and the log's
+header, Context, implementation decisions and rulings), nothing of your
+own view, and the reviewer's constraint against editing or state-changing
+git. It tries to refute the finding against the code and says whether the
+finding is real, whether Blocking is warranted, and whether a smaller fix
+exists. Save its outputs verbatim to `RUN_DIR/skeptics-round-<N>.md` and
+put a `skeptic:` line under each finding's triage entry. Its verdict is
+input to your triage, not a ruling: where you disagree with it, say why.
 
 Then, and only then, for each finding — including the non-blocking items
 under an APPROVED verdict — decide **accept**, **reject**, **escalate**, or

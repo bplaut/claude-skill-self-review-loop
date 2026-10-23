@@ -71,8 +71,10 @@ on high effort or $10 for Opus 5.5 on xhigh effort, depending on diff size.
 2. Run `/review-loop:impl path/to/spec.md`, optionally with `--research-spec
    <path>` (step 1), `--rounds N` to change
    the round cap from its default of 4, `--auto` to run without pausing for
-   your decisions (see step 6), and `--reviewer claude|codex|both` to choose
-   who reviews (default `both`). `both` runs two reviewers per round, and a
+   your decisions (see step 6), `--reviewer claude|codex|both` to choose
+   who reviews (default `both`), and `--skeptics on` to have a fresh
+   subagent try to refute each Blocking finding before the implementer
+   decides it (default `off`). `both` runs two reviewers per round, and a
    round is approved only when both approve. A Codex review sends the spec,
    the log, the diff and whatever else Codex chooses to read to OpenAI, and
    its depth is whatever your Codex config sets (model, reasoning effort).
@@ -155,9 +157,11 @@ engineering categories and the same rule against guarding hypothetical future ed
   `~/review-loop`; keep the two equal), for specs in the repo. A scratch spec's
   records go beside it. A spec review writes under `feedback/` in the same
   run directory the implementation later uses.
-- **The skeptic pass on specs** (`--skeptics`, default `on`). On, a fresh
-  subagent tries to refute each Blocking finding before it is decided;
-  off, rounds are cheaper and faster.
+- **The skeptic pass** (`--skeptics`, default `on` for specs and `off` for
+  implementations). On, a fresh subagent tries to refute each Blocking
+  finding before it is decided; off, rounds are cheaper and faster. Code
+  findings are already checked by reproducing their trigger, so the
+  implementation default is off; spec findings are mostly judgement calls.
 
 ## Reviewing a spec
 
