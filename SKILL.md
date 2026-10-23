@@ -24,7 +24,7 @@ Constants (tweak here):
   provisional decision and the loop keeps going, then presents all open
   questions in one batch when it would otherwise exit or hits the cap. See
   "Auto mode" under Escalation.
-- `REVIEWERS` = the `--reviewer` value, else `claude`: `claude` is a Claude
+- `REVIEWERS` = the `--reviewer` value, else `both`: `claude` is a Claude
   subagent each round, `codex` a Codex process, `both` one of each, run side
   by side. See Phase 2.
 - `REVIEW_LEVEL = high` (Claude reviewer only; a Codex reviewer's depth is

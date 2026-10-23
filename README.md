@@ -22,8 +22,9 @@ on high effort, depending on diff size.
    path at runtime. It's important to clone into that precise directory,
    because that's where Claude Code will look for the skill.
 2. The Claude reviewer runs the built-in `/code-review` skill, so that must be
-   available in your Claude Code install. A Codex reviewer needs the
-   [Codex CLI](https://github.com/openai/codex) installed and logged in; it
+   available in your Claude Code install. A Codex reviewer, part of the
+   default, needs the [Codex CLI](https://github.com/openai/codex)
+   installed and logged in (or pass `--reviewer claude` to go without); it
    runs as `codex exec --sandbox read-only`, so allow that command in your
    permissions and, if you use Claude Code's sandbox, add
    `codex exec --sandbox read-only *` to `sandbox.excludedCommands`, since
@@ -64,7 +65,7 @@ on high effort, depending on diff size.
    <path>` (step 1), `--rounds N` to change
    the round cap from its default of 4, `--auto` to run without pausing for
    your decisions (see step 6), and `--reviewer claude|codex|both` to choose
-   who reviews (default `claude`). `both` runs two reviewers per round, and a
+   who reviews (default `both`). `both` runs two reviewers per round, and a
    round is approved only when both approve. A Codex review sends the spec,
    the log, the diff and whatever else Codex chooses to read to OpenAI, and
    its depth is whatever your Codex config sets (model, reasoning effort).
