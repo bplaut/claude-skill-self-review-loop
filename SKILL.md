@@ -189,11 +189,10 @@ exactly which one and why; do not try to fix the repo state yourself.
 
 Then, on a fresh run:
 
-- **Make a new branch** from the current `HEAD`: `git switch -c <name>`,
-  with a name for the change that does not already exist, in the style of
-  the repo's existing branches. Always a new one, whatever was checked out,
-  so the run's commits sit on a branch of their own; if you started on a
-  branch other than the default, the new one stacks on it.
+- **Make a new branch** from the current `HEAD`: `git switch -c <name>`.
+  Always a new one, whatever was checked out, so the run's commits sit on
+  a branch of their own; if you started on a branch other than the
+  default, the new one stacks on it.
 - Record the base commit: `BASE=$(git rev-parse HEAD)`. Every review and
   the exit restructure are relative to this commit; commits before it are
   never touched.
