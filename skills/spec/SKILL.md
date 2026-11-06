@@ -9,7 +9,8 @@ argument-hint: <path-to-spec-file> [--research-spec <path>] [--rounds N] [--auto
 You are the **author**. The spec file is your draft; you improve it through
 rounds of independent review and triage until it is clean. Nothing is
 implemented, run or committed, and nothing is edited but the spec and files
-under `FEEDBACK`. The output is the spec itself. Implementing it with
+under `FEEDBACK` (and a Codex reviewer's temporary files, in
+`RUN_ROOT/.codex-tmp`). The output is the spec itself. Implementing it with
 `/review-loop:impl` is a separate step the user starts when they choose,
 often in a new session or after teammates have read the spec; never start
 it yourself.
@@ -37,7 +38,8 @@ Constants (tweak here):
   belongs to this repository and is not gitignored there, and **scratch**
   otherwise.
 - `FEEDBACK = RUN_DIR/feedback/`: everything this skill writes besides the
-  spec. `/review-loop:impl` keeps its own log beside it.
+  spec and `RUN_ROOT/.codex-tmp`. `/review-loop:impl` keeps its own log
+  beside it.
 - `LOG = FEEDBACK/decisions.md`
 - `FINDING_BAR` = `${CLAUDE_SKILL_DIR}/finding-bar.md` and `BRIEF` =
   `${CLAUDE_SKILL_DIR}/reviewer-brief.md`, beside this file. Give reviewers
@@ -89,7 +91,7 @@ shape.
 - [escalate] 0.q<n> <a question the spec carries, or setup raised>
 ## Round N
 review started <time>; roles <...>; spec copy round<N>-spec.md (<lines> lines)
-<role>/<reviewer>: VERDICT <...> — round<N>-<role>-<reviewer>.md
+<role>/<reviewer>: VERDICT <...> — round<N>-<role>-<reviewer>[-<k>].md
 - [accept|reject|escalate|defer|settled] <id> <spec section> — <summary> (<severity> <category>)
   reason: <your own, and how you verified it>
   fix: <your fix, when it differs from the reviewer's>
@@ -132,8 +134,11 @@ If a check fails, stop and tell the user which one and why.
    create `LOG` with its header and the request, and copy the spec as given
    to `FEEDBACK/round0-spec.md`; the steps below append to `## Context`.
 3. **The session can run it.** With a Codex reviewer, `codex login status`
-   must exit 0 and the working directory must be inside a git repository,
-   since Codex refuses to start outside one. If either fails under the
+   must exit 0, and the profile `$CODEX_HOME/review-scratch.config.toml`
+   (default `~/.codex/`; README, Setup) must exist, since without it Codex
+   silently writes `/tmp`. A scratch spec's directory, as `realpath` prints
+   it, must be under `RUN_ROOT`, the only place the Codex command is
+   allowed. Then `mkdir -p RUN_ROOT/.codex-tmp`. If a check fails under the
    default, say so and suggest `--reviewer claude`; do not drop Codex
    yourself.
 4. **The spec is reviewable.** It must state its goal, its scope and its
@@ -162,7 +167,10 @@ If a check fails, stop and tell the user which one and why.
    spec and its research spec); it carries no pointers to the prototype. If uncommitted edits touch files
    the spec names, ask whether the spec builds on them rather than
    labelling them out of scope; they may be another session's, and
-   committing them is the user's job.
+   committing them is the user's job. With a Codex reviewer on a uv project
+   (`uv.lock` at the code's checkout top level), that checkout's
+   `.venv/bin/python` must exist, since Codex cannot create it; if not,
+   stop and give the user `uv sync` to run there.
 6. **Roles.** **Research** if the spec makes a research claim, defines a
    metric, chart or judge, or plans an experiment; **engineering** if it
    plans code; both if both. When the research design is new or still
@@ -186,8 +194,9 @@ spec argument is not the log's spec, stop and say from which checkout to
 resume. A spec that changed since the log's last entry may hold your own
 interrupted revision or someone's edit: compare it with the round's copy
 and the logged accepts and rulings before building on it, and never
-revert it on your own. Step 3 still applies. Then read the log and continue from the first
-step it does not record as done.
+revert it on your own. Step 3 and step 5's environment check still apply.
+Then read the log and continue from the first step it does not record as
+done.
 
 ## Phase 1 — the round's inputs
 
@@ -236,19 +245,24 @@ tool with `subagent_type: "general-purpose"` and this prompt:
 
 **Never `fork`**, which inherits your context, and **never reuse** a
 previous round's reviewer. A Codex reviewer is a new process per role and
-round, run through Bash with `run_in_background: true`, from inside the
-repository (`cd` back first, as a Bash call of its own, if the working
-directory has moved), with absolute paths:
+round, in a scratch directory of its own: `<scratch>` is
+`<FEEDBACK>/round<N>-<role>-codex`, from `RUN_DIR`'s real path, with no
+trailing slash, or the first of `<scratch>-2`, `<scratch>-3`, …
+where neither the directory nor its `.md` exists. Create it with `git init
+-q "<scratch>"` as a Bash call of its own, then run through Bash with
+`run_in_background: true`:
 
-    codex exec --sandbox read-only -o "<FEEDBACK>/round<N>-<role>-codex.md" "You are the <ROLE> reviewer for round <N>. You have no scratch directory, so write no files. Read <FEEDBACK>/round<N>-brief.md in full and follow it exactly."
+    codex exec --strict-config -p review-scratch -s workspace-write -C "<scratch>" -o "<scratch>.md" "You are the <ROLE> reviewer for round <N>. Your scratch directory is your working directory. Read <FEEDBACK>/round<N>-brief.md in full and follow it exactly."
 
 Nothing else on the line: no `cd`, pipe, redirect or `$(...)`, and no
-other flag. Never `codex exec resume`.
+other flag. The user's hook
+(README, Setup) refuses any other writable Codex command; a refusal stops
+the round. Never `codex exec resume`.
 
 Save each Claude reviewer's final message **verbatim** to
-`FEEDBACK/round<N>-<role>-claude.md` as it returns; Codex's is its `-o`
-file. Read each verdict from its `VERDICT:` line. A reviewer that returns
-no verdict (it ended its turn waiting on helpers, returned nothing, or
+`FEEDBACK/round<N>-<role>-claude.md` as it returns; Codex's is
+`<scratch>.md`. Read each verdict from its `VERDICT:` line. A reviewer
+that returns no verdict (it ended its turn waiting on helpers, returned nothing, or
 Codex exited non-zero or left the file empty) has failed: stop and tell
 the user. Never proceed on part of a round, and never substitute another
 reviewer.

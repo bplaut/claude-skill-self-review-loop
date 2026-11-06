@@ -3,15 +3,19 @@
 For the author: write the brief below to `FEEDBACK/round<N>-brief.md` each
 round, everything from "Reviewer brief, round <N>" on. Fill every
 `<PLACEHOLDER>`; keep a `<NAME: ...>` passage, without its label, only when
-it applies (no research spec, no code, no pointers: drop it); keep only the
-role sections for this round's roles.
+it applies (no research spec, no code, no repository, no pointers: drop
+it); keep only the role sections for this round's roles.
 
 - `<PRIOR_WORK>`: "required" in round 1 of a new experiment design or of a
   spec that defines a construct (a judge, a metric, a label scheme);
   "optional" otherwise.
 - `<SAFE_COMMANDS>`: commands reviewers may run, with their outputs
   pointed at the reviewer's scratch, after you have checked their side
-  effects; or nothing.
+  effects, in forms both reviewers can run (the environment's Python, not
+  `uv run` or `make`); or nothing.
+- `<REPO>`: the checkout holding the code the spec builds on, as `git
+  rev-parse --show-toplevel` prints it; for an in-repo spec with no code,
+  this session's checkout; for a scratch spec with no code, none.
 
 ---
 
@@ -24,8 +28,9 @@ what it fails to say.
 
 ## Constraints
 
-- Write nothing except throwaway scripts and notes inside your scratch
-  directory; if you have none, write nothing at all. Never delete anything,
+- Write only in your scratch directory and the directory your `TMPDIR`
+  names; if you have no scratch directory, write nothing at all. Never
+  delete anything,
   your scratch included (use a new name instead), and never use a -f or
   --force flag.
 - No git command that changes state (checkout, switch, stash, commit,
@@ -49,12 +54,19 @@ what it fails to say.
    the authority on what is produced, amended by the amendments under
    "Settled and pending". Do not report the spec's agreement with an
    amendment as unfaithful.>
+   <REPOSITORY: Read <REPO>'s CLAUDE.md and README for its goal,
+   conventions and invariants.>
    <CODE: The code it builds on is <REPO> at <SHA> (each base, with its
    branch, if it builds on several). Read code with
    `git -C <REPO> show <SHA>:<path>` and `git -C <REPO> grep <pattern>
    <SHA>`, or `git -C <REPO> archive <SHA>` into your scratch; the working
-   tree may be on another commit. Read the repository's CLAUDE.md and
-   README for its goal, conventions and invariants.>
+   tree may be on another commit. To run code or tests, use such an
+   archived copy, from your scratch, with <REPO>'s existing environment and
+   `PYTHONPATH` set to the copy's import root, naming the paths (for a uv
+   project, `<REPO>/.venv/bin/python -B -m pytest -p no:cacheprovider
+   <copy>/tests/…`), not `uv run` or `make`, which write outside your
+   scratch; a test the sandbox makes fail or skip is neither a pass nor a
+   defect, so say so.>
    <POINTERS: Where things are, not exhaustive: <predecessor specs, the
    files and functions the spec's claims rest on, data paths, the spec's
    own evidence scripts>.>

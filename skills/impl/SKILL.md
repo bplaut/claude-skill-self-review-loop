@@ -46,7 +46,8 @@ Constants (tweak here):
   rest is the spec's repo path without its extension (Phase 0 says which
   kind a spec is, and what its repo path is). Everything this run produces
   — the decision log, the PR draft, anything else — goes here, so each
-  invocation keeps its own records.
+  invocation keeps its own records; only a Codex reviewer's temporary files
+  go to `RUN_ROOT/.codex-tmp`.
 - `LOG = RUN_DIR/decisions.md`
 - `FINDING_BAR` = `${CLAUDE_SKILL_DIR}/finding-bar.md`, beside this file;
   give reviewers its expanded absolute path. The categories a
@@ -116,9 +117,15 @@ exactly which one and why; do not try to fix the repo state yourself.
    user which commit to start from. The run starts from `HEAD`, so for
    another commit they check it out and run the command again.
 4. **The run's inputs are usable.** With a Codex reviewer,
-   `codex login status` must exit 0 — it fails when the CLI is missing or
-   logged out — so that stops the run now rather than after
-   implementation. On a fresh run, `--research-spec`'s path, if given, is
+   `codex login status` must exit 0 (it fails when the CLI is missing or
+   logged out). The profile `$CODEX_HOME/review-scratch.config.toml`
+   (default `~/.codex/`; README, Setup) must exist, since without it Codex
+   silently writes `/tmp`. A scratch spec's directory, as `realpath`
+   prints it, must be under `RUN_ROOT`, the only place the Codex command
+   is allowed. Then `mkdir -p RUN_ROOT/.codex-tmp`. These stop the run now
+   rather than after implementation.
+
+   On a fresh run, `--research-spec`'s path, if given, is
    an existing, non-empty file other than the spec itself (a different repo path if
    both are in-repo, else a different real path, as `realpath` prints
    it), and each in-repo spec must be committed at `HEAD` exactly as it
@@ -204,7 +211,10 @@ Then, on a fresh run:
   already red, every later "run the tests" means "no new failures", and the
   reviewer needs to know which failures it inherited. If there is no suite,
   record "no suite": "run the tests" then means the hand checks the spec
-  names, and nothing in this skill asks you to create a suite.
+  names, and nothing in this skill asks you to create a suite. With a
+  Codex reviewer on a uv project (`uv.lock` at the top level),
+  `.venv/bin/python` must exist after this step, since Codex cannot create
+  it; if not, stop and give the user `uv sync` to run.
 - On a start over, rename the old log to `decisions-<YYYYMMDD-HHMM>.md` in
   `RUN_DIR` now, so the earlier run's record survives. Then create `LOG`
   with a header recording the spec's absolute path and kind (`in-repo`,
@@ -221,8 +231,7 @@ Then, on a fresh run:
   out of bounds — or "none". For an in-repo spec, the Phase 0 answers are
   among them, each as a `- ruling spec:` line (step 8).
 - With a Codex reviewer, write its prompt file now (see "Codex reviewer").
-  Every placeholder in it is fixed from here on, so it is written once per
-  run and every round reuses it.
+  Every round reuses it.
 
 **Resuming.** The spec and the log are your only state (a fresh session has
 no memory of the last one). Take the branch, `BASE`, mode, reviewers,
@@ -234,8 +243,10 @@ none. If you are not on that
 branch, stop and tell the user. A dirty tree is then this run's
 interrupted work: show `git status` and `git diff --stat` and ask whether
 to keep or discard it; never revert it on your own. Of Phase 0, the Codex
-login check, step 4's reading of the specs as of the log's `BASE`, and
-step 5 still apply; the fresh-run checks were made when the run began.
+checks (step 4's and the venv check after "Tests, once"), step 4's
+reading of the specs as of the log's `BASE`, and step 5 still apply, and
+a Codex reviewer's prompt file is rewritten; the fresh-run checks were
+made when the run began.
 Then read the log and continue from the first step it does not record as
 done.
 
@@ -353,14 +364,16 @@ round.
 The reviewer prompt must contain exactly this information and nothing about
 your own reasoning, plan, or self-review. Fill `<spec location>` with the
 spec's path for a scratch spec, and for an in-repo one with
-`` `git show <BASE>:<repo path>` ``; fill `<research spec location>` the
-same way. Each `[If ...]` passage goes in, without its brackets and
-condition, only when the condition holds.
+`` `git -C <REPO> show <BASE>:<repo path>` ``, `<REPO>` being this
+checkout's top level (`git rev-parse --show-toplevel`); fill `<research
+spec location>` the same way. Each `[If ...]` passage goes in, without
+its brackets and condition, only when the condition holds.
 
 ```
 You are an independent code reviewer. You must not edit any file or run
 any git command that changes state, and every helper agent you spawn must
-be told the same — pass this constraint into each helper's prompt.
+be told the same — pass this constraint into each helper's prompt. Do not
+read other reviewers' files or scratch directories.
 
 You are a subagent: your final message is the only thing the parent
 session sees, and your turn ending is final — nothing re-invokes you.
@@ -476,38 +489,51 @@ A Codex reviewer is a new `codex exec` process each round, given the prompt
 above. `codex review` would not do: it imposes its own output format, which
 has no `VERDICT:` line and no `[Blocking]` labels.
 
-1. The prompt file, `RUN_DIR/codex-reviewer-prompt.md`, is written once,
-   when `LOG` is created on a fresh run: the prompt above with its
-   placeholders filled in as for a subagent, and four changes that adapt
-   what was written for a Claude Code subagent:
-   - drop the clause about helper agents from the first paragraph;
-   - at the end of the step that reads the spec, add: "Also read the
-     repository's `CLAUDE.md`, if it has one, for its conventions." (a
-     subagent loads it on its own; Codex reads `AGENTS.md` instead);
+1. The prompt file, `RUN_DIR/codex-reviewer-prompt.md`, is written when
+   `LOG` is created on a fresh run, and again on resume: the prompt above
+   with its placeholders filled in as for a subagent, and four changes
+   that adapt what was written for a Claude Code subagent:
+   - in the first paragraph, drop the clause about helper agents, and
+     replace "You must not edit any file or run any git command that
+     changes state" with "Your scratch directory is your working
+     directory: write only there and in the directory your `TMPDIR` names,
+     and run no git command that changes state";
+   - at the end of the step that reads the spec, add: "Also read
+     `<REPO>`'s `AGENTS.md` or `CLAUDE.md`, if present, for its
+     conventions." (a subagent loads it on its own; Codex starts outside
+     the repository);
    - replace the step that runs /code-review with: "Review the diff since
-     <BASE>: `git diff <BASE>`, for behavior defects, robustness issues
-     with a trigger, and simplifications, per the finding bar. Do not review
-     commits before <BASE>. The commit structure since <BASE> is
+     <BASE>: `git -C <REPO> diff <BASE>`, for behavior defects, robustness
+     issues with a trigger, and simplifications, per the finding bar. Do
+     not review commits before <BASE>. The commit structure since <BASE> is
      work-in-progress and is restructured before merge; review the diff,
-     not the commits or their messages.";
+     not the commits or their messages. Run tests from your scratch with
+     `<REPO>`'s existing environment, naming the test paths (for a uv
+     project, `<REPO>/.venv/bin/python -B -m pytest -p no:cacheprovider
+     <REPO>/tests/…`), not `uv run` or `make`, which write into the
+     repository; a test the sandbox makes fail or skip is neither a pass
+     nor a defect, so say so.";
    - drop the sentence about the ReportFindings tool.
 
    The prompt goes in a file because it contains backticks and
    apostrophes, which the shell would interpret if it were passed inline.
-2. Run this one command with `run_in_background: true`, `RUN_DIR` as an
-   absolute path and `N` the round:
+2. Its scratch directory, `<scratch>`, is `<RUN_DIR>/codex-round-<N>`,
+   from `RUN_DIR`'s real path, with no trailing slash, or the
+   first of `<scratch>-2`, `<scratch>-3`, … where neither the directory
+   nor its `.md` exists. Create it with `git init -q "<scratch>"` as a Bash
+   call of its own, then run this one command with
+   `run_in_background: true`:
 
-       codex exec --sandbox read-only -o "<RUN_DIR>/codex-round-<N>.md" "Read <RUN_DIR>/codex-reviewer-prompt.md and follow its instructions exactly."
+       codex exec --strict-config -p review-scratch -s workspace-write -C "<scratch>" -o "<scratch>.md" "Read <RUN_DIR>/codex-reviewer-prompt.md and follow its instructions exactly."
 
-   Nothing else on the line — no `cd`, pipe, redirect or `$(...)` — so a
-   permission rule for `codex exec --sandbox read-only` matches it; and no
-   `-c`, `--config`, `--enable` or `--disable`, so the user's Codex
-   configuration stays in force. `--sandbox read-only` keeps Codex from
-   writing, whatever that configuration says. Never `codex exec resume`: a
-   new process each round, for the same reason as a new subagent. Wait for
-   the completion notification without touching the working tree.
-3. The reviewer's final message is the contents of
-   `RUN_DIR/codex-round-<N>.md`; the command's own output is Codex's
+   Nothing else on the line — no `cd`, pipe, redirect or `$(...)`, and no
+   other flag — so the permission rules match it and the user's hook
+   (README, Setup), which refuses any other writable Codex command, lets it
+   through; a refusal stops the run. Never `codex exec resume`: a new
+   process each round, for the same reason as a new subagent. Wait for the
+   completion notification without touching the working tree.
+3. The reviewer's final message is the contents of `<scratch>.md`; the
+   command's own output is Codex's
    transcript and is not pasted. If the command exits non-zero, or the file
    is missing or empty, stop and tell the user, as for a missing verdict.
    Never fall back to a Claude reviewer in its place.

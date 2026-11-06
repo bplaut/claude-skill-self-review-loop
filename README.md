@@ -31,25 +31,62 @@ on high effort or $10 for Opus 5.5 on xhigh effort, depending on diff size.
 2. The implementation's Claude reviewer runs the built-in `/code-review`
    skill, so that must be available in your Claude Code install. A Codex
    reviewer, part of both skills' default, needs the [Codex CLI](https://github.com/openai/codex)
-   installed and logged in (or pass `--reviewer claude` to go without); it
-   runs as `codex exec --sandbox read-only`, so allow that command in your
-   permissions and, if you use Claude Code's sandbox, add
-   `codex exec --sandbox read-only *` to `sandbox.excludedCommands`, since
-   Codex fails inside that sandbox.
+   installed and logged in (or pass `--reviewer claude` to go without). It
+   runs in a fresh scratch directory of its own, which it may write, so it
+   can run the code and tests it reviews. That needs:
+   - A Codex profile, `~/.codex/review-scratch.config.toml`, with `<home>`
+     your home directory (TOML does not expand `~`):
+
+         [sandbox_workspace_write]
+         writable_roots = ["<home>/review-loop/.codex-tmp"]
+         network_access = false
+         exclude_slash_tmp = true
+         exclude_tmpdir_env_var = true
+
+         [shell_environment_policy.set]
+         TMPDIR = "<home>/review-loop/.codex-tmp"
+         TMPPREFIX = "<home>/review-loop/.codex-tmp/zsh"
+
+     Codex then writes only its scratch and `~/review-loop/.codex-tmp`
+     (Phase 0 creates it; clear its contents only while no Codex reviewer
+     runs), with no network.
+   - In `~/.claude/settings.json`, allow
+     `Bash(codex exec --strict-config -p review-scratch -s workspace-write -C *)`
+     and, if you use Claude Code's sandbox, add
+     `codex exec --strict-config -p review-scratch -s workspace-write -C *`
+     to `sandbox.excludedCommands`, since Codex fails inside that sandbox.
+     The trailing `*` also admits extra flags, so a PreToolUse hook should
+     refuse every writable Codex command but `codex exec --strict-config -p
+     review-scratch -s workspace-write -C <dir> -o <dir>.md <prompt>`, with
+     `<dir>` a fresh `git init` (only `.git` in it) under `~/review-loop`
+     and `<dir>.md` not there yet.
+   - After a Codex upgrade, rerun the write checks: the profile's
+     `[sandbox_workspace_write]` table is a legacy one in Codex 0.160.1,
+     and `--strict-config` catches only keys Codex stops recognizing. Run
+     that command in a fresh `git init`ed directory under `~/review-loop`
+     with a prompt asking Codex to try each write. A file in that
+     directory, a file in `$TMPDIR` and a zsh heredoc must succeed. A new
+     file in a sibling directory, `/tmp`, `$(getconf DARWIN_USER_TEMP_DIR)`
+     and `~/.codex/` must be refused, by a shell write and by Codex's
+     file-edit tool each, and so must one in the sibling from a command
+     whose working directory is that sibling, by a shell write and by
+     `apply_patch` run through the shell.
 3. A spec is either in the repo (a design doc, say; `/review-loop:impl`
    needs it committed) or a scratch file kept outside it. Each run keeps its records (the decision log, the
    PR draft) in a run directory: for a scratch spec, the directory holding
    it, so give each scratch spec a directory of its own; for a spec in
    the repo, `~/review-loop/<repo>/<its path in the repo>/`, without the
    extension (`RUN_ROOT` in each skill's `SKILL.md`),
-   made on first use. Keep scratch specs outside the repo too, e.g. under
-   `~/review-loop/<repo>/<change>/`: Claude Code blocks a worktree
+   made on first use. Keep scratch specs outside the repo too, under
+   `~/review-loop/<repo>/<change>/` (required with a Codex reviewer, which
+   runs only under `~/review-loop`): Claude Code blocks a worktree
    session's file edits in the main checkout, so a run directory there
    blocks worktree runs; outside the repo, every session reaches the same
    single copy, and it outlives the worktree. Add `~/review-loop` to
    `permissions.additionalDirectories` in `~/.claude/settings.json` so
    sessions treat it like the project directory. A scratch spec in a
-   gitignored directory inside the repo also works (the skill checks).
+   gitignored directory inside the repo also works (the skill checks),
+   without a Codex reviewer.
 
 ## How a run goes
 
@@ -154,7 +191,8 @@ engineering categories and the same rule against guarding hypothetical future ed
   Lower levels are cheaper and shallower. A Codex reviewer's depth is set
   in your Codex config instead.
 - **Where run records go** (`RUN_ROOT` in each skill's `SKILL.md`, default
-  `~/review-loop`; keep the two equal), for specs in the repo. A scratch spec's
+  `~/review-loop`; keep the two equal), for specs in the repo; with a Codex
+  reviewer, the profile and the hook (Setup) name it too. A scratch spec's
   records go beside it. A spec review writes under `feedback/` in the same
   run directory the implementation later uses.
 - **The skeptic pass** (`--skeptics`, default `on` for specs and `off` for
