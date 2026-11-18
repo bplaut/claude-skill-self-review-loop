@@ -31,6 +31,9 @@ Constants (tweak here):
   skill spawns (the reviewers, the skeptics, the verification pass).
   Without it a subagent runs on the session's model. A Codex reviewer's
   model is the user's Codex configuration.
+- `CLAUDE_EFFORT = medium`, unless the user names another effort in the
+  invocation: the Agent tool's `effort` for every Claude subagent this
+  skill spawns, passed with `model: CLAUDE_MODEL` at each launch.
 - `RESEARCH_SPEC` = the `--research-spec` path, else none: a spec of what
   the code produces and why, which this spec implements and must stay
   faithful to. It is the user's; the run never edits it.
@@ -244,7 +247,8 @@ Before spawning reviewers each round:
 ## Phase 2 — review
 
 Spawn every reviewer of the round at once. A Claude reviewer is the Agent
-tool with `subagent_type: "general-purpose"`, `model: CLAUDE_MODEL` and
+tool with `subagent_type: "general-purpose"`, `model: CLAUDE_MODEL`,
+`effort: CLAUDE_EFFORT` and
 this prompt:
 
     You are the <ROLE> reviewer for round <N>. Your scratch directory is <FEEDBACK>/round<N>-<role>-claude/. Read <FEEDBACK>/round<N>-brief.md in full and follow it exactly.
@@ -280,7 +284,7 @@ file) to `LOG`, and a `- deviation:` line for any breach one reports.
 
 **Skeptic pass** (`SKEPTICS`, on by default). Before you decide anything,
 give each Blocking finding from a reviewer a fresh subagent on
-`CLAUDE_MODEL` under the reviewer constraints, all at once, with the
+`CLAUDE_MODEL` at `CLAUDE_EFFORT` under the reviewer constraints, all at once, with the
 finding verbatim, the round's
 brief and the bar, and nothing of your own view. It tries to refute the
 finding against the spec, code and data, and says whether the finding is
@@ -483,7 +487,7 @@ cases go to the user:
 the user ended the loop), and once no escalation is open, run Phase 1 step
 1 (a user edit, a research-spec revision or a base move found there may
 mean another round), then the **verification pass**: one fresh subagent
-on `CLAUDE_MODEL` under the reviewer constraints, scratch
+on `CLAUDE_MODEL` at `CLAUDE_EFFORT` under the reviewer constraints, scratch
 `FEEDBACK/round<N>-verify/`, given
 the spec, the research spec as it now is, the current base, the bar, the
 last brief, every ruling logged

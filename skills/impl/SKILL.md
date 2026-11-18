@@ -34,6 +34,9 @@ Constants (tweak here):
   skill spawns (the reviewer, the skeptics). Without it a subagent runs on
   the session's model. A Codex reviewer's model is the user's Codex
   configuration.
+- `CLAUDE_EFFORT = medium`, unless the user names another effort in the
+  invocation: the Agent tool's `effort` for every Claude subagent this
+  skill spawns, passed with `model: CLAUDE_MODEL` at each launch.
 - `SKEPTICS` = the `--skeptics` value, else `off`. See "Skeptic pass" in
   Phase 3.
 - `RESEARCH_SPEC` = the `--research-spec` path if given, else none: a spec
@@ -355,7 +358,7 @@ Before running the reviewers:
    interrupted review leaves a trace to resume from.
 
 A Claude reviewer is spawned with the `Agent` tool:
-`subagent_type: "general-purpose"`, `model: CLAUDE_MODEL`.
+`subagent_type: "general-purpose"`, `model: CLAUDE_MODEL`, `effort: CLAUDE_EFFORT`.
 **Never `fork`** — fork inherits your context, which defeats the purpose.
 **Never reuse a previous round's reviewer** via SendMessage — a new agent
 each round; the decision log carries forward what needs remembering.
@@ -554,7 +557,7 @@ what was actually said, not your paraphrase of it.
 
 **Skeptic pass** (`SKEPTICS`, off by default). Before deciding anything,
 give each Blocking finding a fresh `general-purpose` subagent on
-`CLAUDE_MODEL`, all at once, with the finding verbatim and the inputs a
+`CLAUDE_MODEL` at `CLAUDE_EFFORT`, all at once, with the finding verbatim and the inputs a
 reviewer gets (the spec, the
 research spec if any, `git diff <BASE>`, `FINDING_BAR`, and the log's
 header, Context, implementation decisions and rulings), nothing of your

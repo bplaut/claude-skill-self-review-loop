@@ -190,8 +190,10 @@ engineering categories and the same rule against guarding hypothetical future ed
 - **The review depth** (`REVIEW_LEVEL` in `skills/impl/SKILL.md`, default `high`).
   Lower levels are cheaper and shallower. A Codex reviewer's depth is set
   in your Codex config instead.
-- **The Claude reviewer's model** (`CLAUDE_MODEL` in each skill's
-  `SKILL.md`, default `opus`; keep the two equal). The Claude reviewer,
+- **The Claude reviewer's model and effort** (`CLAUDE_MODEL` and
+  `CLAUDE_EFFORT` in each skill's `SKILL.md`, default `opus` at `medium`;
+  keep the two skills equal). `CLAUDE_EFFORT` is the subagent's reasoning
+  effort, separate from `REVIEW_LEVEL`. The Claude reviewer,
   the skeptics and the spec review's verification pass run on it whatever
   model your session is on; the implementer or author stays on the
   session's model. Name another model when you start a run to override it
