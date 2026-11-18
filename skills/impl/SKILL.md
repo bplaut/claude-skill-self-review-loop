@@ -671,7 +671,11 @@ Escalate (stop and ask, do not guess) when:
 - the round cap is reached but the loop would otherwise continue (the last
   verdict was NOT APPROVED, or its accepted fixes were structural). Ask
   whether to exit with the unreviewed-fixes caveat or run N more rounds;
-  do not decide that yourself.
+  do not decide that yourself. With the question, propose a scope for any
+  extra rounds from what the last rounds found ("wording only", "no new
+  guards"), and do the same when the user raises the cap without one.
+  Unless the user objects, log it as a `- ruling scope: <scope>` line,
+  which the next rounds' reviewers read with the other rulings.
 
 Also use common sense. If you think a situation arises that should be escalated,
 do so even if it diverges from the flow described by the skill.

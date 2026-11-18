@@ -393,7 +393,11 @@ Escalate (do not decide) when:
 - a fix alters how a ruling is carried out in substance or cost;
 - you disagree with a Blocking finding, however sure you are: give your
   argument and what you checked;
-- the round cap is reached and the loop would otherwise continue.
+- the round cap is reached and the loop would otherwise continue. With the
+  question, propose a scope for any extra rounds from what the last rounds
+  found ("wording only", "no new guards"), and do the same when the user
+  raises the cap without one; the next brief carries that scope and the
+  settled rulings unless the user objects.
 
 Engineering details no ruling covers are yours.
 
