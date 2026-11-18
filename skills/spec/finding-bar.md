@@ -35,7 +35,9 @@ example, a small observation.
   the spec's research claim: a confound, a selection effect, a measure
   that misses its construct, conditions that differ in more than the
   variable under study. A concrete, plausible scenario is enough; show it
-  on existing data where that is cheap.
+  on existing data where that is cheap. For the wording of a prompt a
+  model reads, such as a judge's rubric, show that kind of reply in
+  existing logs, or report it Non-blocking.
 - **R2. A reported number would mislead.** Name the chart, table or
   statistic, the comparison a reader would draw, and why the data does
   not support it.
@@ -54,7 +56,10 @@ example, a small observation.
   would produce wrong results, lose or double-count data, or fail. Give
   the concrete input, file state or sequence of commands that breaks it.
   Inputs the system accepts but does not control (provider responses,
-  external data) count.
+  external data) count when something real would plausibly produce them:
+  a provider, the data, a model acting on what it can see, or an honest
+  mistake by the user or Claude. An input only a hostile actor would
+  craft does not, unless the spec or the brief puts hostile input in scope.
 - **E2. A gap.** Something the goal requires that no decision covers: a
   state of the files on disk (interrupted, partial, errored, stale) that
   no rule handles; a reader of the outputs the plan does not mention; a

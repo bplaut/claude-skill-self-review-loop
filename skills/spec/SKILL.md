@@ -398,7 +398,8 @@ code or data, as you would a finding. Batch the round's questions into one
 numbered message the user can answer by number. For each: the trigger as a
 numbered sequence of the user's own actions (the commands they would run
 and what is on disk at each step), or, for a construct or judge rule,
-example responses with the label each option gives; where the options
+example responses quoted from existing logs (an invented one only where the
+logs have none, marked as invented) with the label each option gives; where the options
 diverge and what does not change; the options, including descoping,
 deferring, measuring first in a pilot, or stating a caveat; your
 recommendation and its reason; and any reviewer's or skeptic's view that

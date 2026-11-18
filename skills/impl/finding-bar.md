@@ -15,6 +15,14 @@ not count: "a future edit could reorder this" or "a fifth type might be added"
 is not a trigger, because guarding against your own edits is the job of tests
 and review, not of runtime checks or extra indirection. Do not raise those.
 
+The trigger must also be plausible: something a provider, the data, a model
+acting on what it can see, or an honest mistake by the user or Claude would
+produce. An input only a hostile actor would craft is not a trigger unless the
+spec puts hostile input in scope. For a prompt a model reads (a judge's rubric,
+a task prompt), a reply the prompt would mislabel is a trigger only when that
+kind of reply appears in the repo's existing logs (a count, or one quoted
+example with its file); an invented reply is Non-blocking.
+
 ## 2. Simplify the code
 
 Name what becomes easier to maintain, and how. The measure is complexity and
@@ -62,13 +70,16 @@ category's job of making a finding checkable is not needed there.
 
 New features or generalisations beyond the spec's purpose; refactors of code
 the diff did not touch; pre-existing problems outside the diff (one line,
-marked out of scope, at most).
+marked out of scope, at most); a state the team's actual workflow cannot
+produce, or one that lasts only until the user's normal workflow clears it.
 
 ## Verification, per category (the implementer does this before accepting)
 
-- Trigger: reproduce it — with real data, or with a constructed input the code
-  would accept, a stubbed provider response if need be. A trigger you cannot
-  demonstrate either way is not a trigger.
+- Trigger: reproduce it — with real data, or with a plausible constructed
+  input the code would accept (section 1), a stubbed provider response if need
+  be; for a prompt, find the reply in existing logs. A trigger you cannot
+  demonstrate either way is not a trigger, and reproducing one does not make
+  it plausible.
 - Simplification: write the alternative out and compare what a maintainer must
   understand and keep in sync. Line count alone decides nothing.
 - False documentation: check the quoted statement against the code. Ambiguous
