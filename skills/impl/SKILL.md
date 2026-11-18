@@ -594,11 +594,15 @@ Rules:
      authority: form your own opinion. Every suggestion arrives with a
      reason, and accepting on "has a reason" is how a small change
      accumulates guards against hypotheticals nobody asked for.
-- **A Blocking finding is accepted or escalated, never rejected on your
-  own authority.** If you would argue against one, write the argument as
-  your recommendation and escalate it. You can reject Non-blocking findings without
-  escalation, although escalation is preferred when the decision is genuinely
-  ambiguous.
+- **A Blocking finding that meets the bar is accepted or escalated, never
+  rejected on your own authority.** If you would argue against one, write
+  the argument as your recommendation and escalate it. One whose only
+  trigger the bar excludes (a future edit, an implausible input, a state
+  the workflow clears) fails the acceptance test: reject it with that
+  reason, even when a reviewer reproduced it. The round then repeats
+  (Phase 4), so the next round's reviewers can contest the rejection. You
+  can reject Non-blocking findings without escalation, although
+  escalation is preferred when the decision is genuinely ambiguous.
 - Every decision has a stated reason. "The reviewer said so" is not a
   reason to accept; "I wrote it that way" is not a reason to reject.
   "Unlikely in practice" is a valid reason to reject a robustness finding,
@@ -618,6 +622,10 @@ Rules:
   convincing. Agreeing with the reviewer is not a way around this.
 - A PLAUSIBLE finding gets checked (read the code, run it) before it is
   accepted or rejected. Never dismiss it unverified.
+- When a Blocking finding lands in code the previous round added, first try
+  deleting or loosening that addition rather than patching it. If deleting
+  it would change the spec (a flag, an option or a check the spec names),
+  escalate that option instead.
 - **Research observations always reach the user.** Everything in the
   reviewer's "For the user" section, and any finding you reject or defer
   because it is about the research rather than the code (a confound, a
@@ -658,7 +666,7 @@ Escalate (stop and ask, do not guess) when:
   research call that goes wrong silently moves the numbers the project
   exists to produce. Escalate them even when the spec seems to settle the
   point and you are confident in your reading;
-- you would reject a Blocking finding;
+- you would reject a Blocking finding that meets the bar;
 - tests fail and the fix needs a scope change;
 - the round cap is reached but the loop would otherwise continue (the last
   verdict was NOT APPROVED, or its accepted fixes were structural). Ask
@@ -755,9 +763,12 @@ another round (in auto mode, run one instead).
 
 A Blocking finding that the user rejects is settled — there is nothing for a
 reviewer to contest — so if every Blocking finding ended that way, exit as if
-APPROVED. A ruling that *does* make significant code changes needs to be
-reviewed like any other accepted fix and triggers another round (if under the
-cap).
+APPROVED. A Blocking finding *you* rejected is not settled: never exit on a
+round that rejected one. Run another round, within the cap, so its reviewers
+can contest the rejection (step 6 of the reviewer prompt); at the cap, the
+question to the user names it. A ruling that *does* make significant code
+changes needs to be reviewed like any other accepted fix and triggers another
+round (if under the cap).
 
 Before leaving the round, append `outcome: repeat — <reason>` or
 `outcome: exit — <reason>` to `LOG`, so a resumed session can read the

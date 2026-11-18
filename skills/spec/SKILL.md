@@ -312,7 +312,8 @@ finding the same defect is strong evidence it is real.
   fix" is normal: a smaller fix, an existing mechanism, a caveat instead of
   machinery. Never accept a fix that adds a check, guard or option whose
   only trigger is hypothetical, and hold your own additions to the same
-  test.
+  test. When the finding lands in text the previous round added, the first
+  fix to try is deleting or loosening that addition.
 - **Research decisions, scope and rulings go to the user** ("Escalation"),
   whoever raised them and at whatever severity.
 - **Your own earlier triage** you may reverse, with a `- correction:`

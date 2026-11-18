@@ -179,12 +179,15 @@ engineering categories and the same rule against guarding hypothetical future ed
   simplifications are already Non-blocking.)
 - **When the implementer must ask you** (`skills/impl/SKILL.md`, "Escalation"). As
   written, every reversal of a logged decision, every rejection of a
-  Blocking finding, and every decision that would change what a result
-  number means comes to you. Loosening either gives the implementer
+  Blocking finding the bar does not exclude, and every decision that
+  would change what a result number means comes to you. Loosening either gives the implementer
   more autonomy and you fewer interruptions. `--auto` is the per-run
   version of this trade: the same questions reach you, but batched at the
   end, at the cost of later rounds possibly reviewing code built on a
-  provisional call you then reverse.
+  provisional call you then reverse. A Blocking finding whose only
+  trigger the finding bar excludes is rejected without asking you, but
+  the loop never exits on that round: the next round's reviewers can
+  contest it, and a contested rejection comes to you.
 - **The round cap** (`--rounds N`, default 4). Hitting it asks you rather
   than exiting, so it bounds cost without ending a productive loop.
 - **The review depth** (`REVIEW_LEVEL` in `skills/impl/SKILL.md`, default `high`).
