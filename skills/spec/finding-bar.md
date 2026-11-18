@@ -49,6 +49,12 @@ example, a small observation.
 - **R5. A pilot cannot answer its own question.** A decision the spec
   says a pilot or first run will inform, for which the planned outputs
   give no usable evidence. Say what is missing.
+- **R6. A choice or the payoff rests on an unmeasured number.** The plan
+  picks between options, or is worth building at all, only if a cost or
+  rate (GPU-hours, a yield, a base rate, an effect size) is what the spec
+  assumes; existing data or a small probe could measure it cheaply; and the
+  spec neither gives the measurement nor runs the probe before the build.
+  Name the number and the cheapest way to measure it.
 
 ## Engineering
 
@@ -126,6 +132,7 @@ why it is major and why no category fits.
 - R1, R2, R3: trace the case through the design; recompute any numbers.
 - R4: open the cited work.
 - R5: match the decision against the planned outputs.
+- R6: check the number's source, or that the probe comes before the build.
 - E1, E2: construct the input or file state and trace the spec's rules
   through it.
 - E3: read the rule where it is stated.

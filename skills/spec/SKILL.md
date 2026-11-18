@@ -185,6 +185,9 @@ If a check fails, stop and tell the user which one and why.
    open, run research-only rounds until research passes (Phase 4), then
    add engineering: engineering rounds on a design that then changes are
    wasted. When it is narrow or already ruled on, run both from round 1.
+   If a choice between options rests on a cost, rate or yield nobody has
+   measured, compute or probe it before round 1 and put the result in the
+   spec; a draft you wrote yourself with open questions counts as open.
    Log the plan with its reason; the user may override it.
 7. **Ask.** Put the gaps, your readings of terse instructions (in concrete
    terms), the `0.q` questions, step 5's questions, the role plan and, if
