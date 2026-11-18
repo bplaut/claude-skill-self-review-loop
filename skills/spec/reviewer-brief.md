@@ -40,6 +40,8 @@ what it fails to say.
   for them. <SAFE_COMMANDS>
 - Data is read-only and may be changing under you. To exercise code that
   writes, copy what it needs into your scratch first.
+- A command a hook or the sandbox refuses is a result: report it with what
+  you were checking, and don't get the same thing another way.
 - Any helper agent you spawn gets these constraints in its prompt and runs
   with run_in_background: false; read each result before moving on.
 - You are a subagent: your final message is the only thing the parent

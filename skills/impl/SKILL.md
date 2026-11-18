@@ -520,7 +520,8 @@ has no `VERDICT:` line and no `[Blocking]` labels.
      project, `<REPO>/.venv/bin/python -B -m pytest -p no:cacheprovider
      <REPO>/tests/…`), not `uv run` or `make`, which write into the
      repository; a test the sandbox makes fail or skip is neither a pass
-     nor a defect, so say so.";
+     nor a defect, so say so. A command a hook or the sandbox refuses is a
+     result to report, not one to reach another way.";
    - drop the sentence about the ReportFindings tool.
 
    The prompt goes in a file because it contains backticks and
